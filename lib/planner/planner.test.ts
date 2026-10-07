@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PrereqTree, Requirement } from "@/db/schema";
 import { buildPlan, type Catalog, type CatalogCourse, type Plan } from "./index";
 import { courseCost, resolveTree, treeCost } from "./prereqs";
+import { applyApCredit, type ApExam } from "./ap";
 import { offeredSeasons } from "./schedule";
 
 // ---- tiny catalog builders -------------------------------------------------
@@ -12,7 +13,7 @@ function course(id: string, opts: Partial<CatalogCourse> = {}): CatalogCourse {
   return { id, title: id, minUnits: 4, maxUnits: 4, prerequisiteTree: null, terms: ALL_SEASONS, ...opts };
 }
 const req = (courseId: string, coreq = false): PrereqTree => ({ prereqType: "course", courseId, coreq });
-const exam = (examName: string): PrereqTree => ({ prereqType: "exam", examName });
+const exam = (examName: string, minGrade?: string): PrereqTree => ({ prereqType: "exam", examName, minGrade });
 const and = (...t: PrereqTree[]): PrereqTree => ({ AND: t });
 const or = (...t: PrereqTree[]): PrereqTree => ({ OR: t });
 const take = (label: string, courses: string[], courseCount = courses.length): Requirement =>
@@ -31,7 +32,7 @@ describe("prerequisite trees", () => {
     course("B", { prerequisiteTree: req("A") }),
     course("C", { prerequisiteTree: req("B") }),
   );
-  const ctx = { catalog, have: new Set<string>(), exams: new Set<string>() };
+  const ctx = { catalog, have: new Set<string>(), exams: new Map<string, number>() };
 
   it("counts a course plus everything it drags in", () => {
     expect(courseCost("A", ctx)).toBe(1);
@@ -46,8 +47,15 @@ describe("prerequisite trees", () => {
   it("treats an owned course or passed exam as free", () => {
     const owned = { ...ctx, have: new Set(["C"]) };
     expect(resolveTree(or(req("A"), req("C")), owned)).toEqual([{ id: "C", coreq: false }]);
-    const passed = { ...ctx, exams: new Set(["AP CALCULUS BC"]) };
+    const passed = { ...ctx, exams: new Map([["AP CALCULUS BC", 5]]) };
     expect(resolveTree(or(req("C"), exam("AP Calculus BC")), passed)).toEqual([]);
+  });
+
+  it("requires the minimum exam score", () => {
+    const scored3 = { ...ctx, exams: new Map([["AP CALCULUS BC", 3]]) };
+    expect(resolveTree(or(req("A"), exam("AP Calculus BC", "4")), scored3)).toEqual([{ id: "A", coreq: false }]);
+    const scored4 = { ...ctx, exams: new Map([["AP CALCULUS BC", 4]]) };
+    expect(resolveTree(or(req("A"), exam("AP Calculus BC", "4")), scored4)).toEqual([]);
   });
 
   it("skips impossible branches of an AND instead of failing the course", () => {
@@ -165,5 +173,46 @@ describe("scheduling", () => {
     const plan = buildPlan([take("both", ["X", "Y"])], catalog, opts);
     expect(plan.unscheduled.map((u) => u.item.id).sort()).toEqual(["X", "Y"]);
     expect(plan.warnings.some((w) => w.includes("couldn't be scheduled"))).toBe(true);
+  });
+});
+
+// ---- personalization ------------------------------------------------------
+
+describe("starting partway through", () => {
+  const catalog = catalogOf(course("A"), course("B", { prerequisiteTree: req("A") }), course("CAPSTONE", { restriction: "Seniors only." }));
+
+  it("starts at the given quarter and labels it correctly", () => {
+    const plan = buildPlan([take("all", ["B"])], catalog, { ...opts, firstQuarter: 4, completed: ["A"] });
+    expect(plan.quarters[0]).toMatchObject({ index: 4, label: "Winter 2028" });
+    expect(plan.quarters.at(-1)!.index).toBe(11); // still runs to graduation
+  });
+
+  it("times class standing from the student's first Fall, not from the first planned quarter", () => {
+    const plan = buildPlan([take("cap", ["CAPSTONE"])], catalog, { ...opts, firstQuarter: 9 });
+    expect(plan.quarters.find((q) => q.items.length)!.index).toBe(9);
+  });
+});
+
+describe("AP credit", () => {
+  const exams: ApExam[] = [{
+    name: "AP Calculus BC",
+    catalogueName: "AP CALCULUS BC",
+    rewards: [
+      { scores: [4, 5], courses: { OR: [{ AND: ["MATH 2A", "MATH 2B"] }, { AND: ["MATH 5A", "MATH 5B"] }] } },
+      { scores: [3], courses: { OR: ["MATH 2A", "MATH 5A"] } },
+    ],
+  }];
+
+  it("grants courses by score", () => {
+    expect(applyApCredit(exams, { "AP Calculus BC": 5 }).completed).toEqual(expect.arrayContaining(["MATH2A", "MATH2B"]));
+    expect(applyApCredit(exams, { "AP Calculus BC": 3 }).completed).not.toContain("MATH2B");
+    expect(applyApCredit(exams, { "AP Calculus BC": 2 }).completed).toEqual([]);
+  });
+
+  it("drops credited courses and their prerequisites from the plan", () => {
+    const catalog = catalogOf(course("MATH1B"), course("MATH2A", { prerequisiteTree: req("MATH1B") }), course("MATH2B", { prerequisiteTree: req("MATH2A") }), course("MATH2D", { prerequisiteTree: req("MATH2B") }));
+    const credit = applyApCredit(exams, { "AP Calculus BC": 5 });
+    const plan = buildPlan([take("calc", ["MATH2A", "MATH2B", "MATH2D"])], catalog, { ...opts, ...credit });
+    expect(planned(plan)).toEqual(["MATH2D"]);
   });
 });

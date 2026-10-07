@@ -1,10 +1,10 @@
-import { asc, inArray, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { cacheLife } from "next/cache";
 import { db } from "@/db";
-import { courses, majors } from "@/db/schema";
-import { loadCatalog, loadMajor } from "@/lib/catalog";
-import { buildPlan, type Plan, type Season } from "@/lib/planner";
-import { baseId, offeredSeasons } from "@/lib/planner/schedule";
+import { apExams, courses, majors, type PrereqTree, type Requirement } from "@/db/schema";
+import { buildPlan, type CatalogCourse } from "@/lib/planner";
+import type { ApExam } from "@/lib/planner/ap";
+import { normalizeCourseId } from "@/lib/planner/prereqs";
 
 export type MajorSummary = { id: string; name: string; degreeType: string | null };
 
@@ -18,45 +18,78 @@ export async function getMajors(): Promise<MajorSummary[]> {
     .orderBy(asc(majors.name));
 }
 
-export type CourseInfo = {
-  code: string; // "I&C SCI 46"
-  description: string | null;
-  prerequisiteText: string | null;
-  seasons: Season[]; // offered recently; empty = no recent data
-};
+// What the browser needs to plan: the catalog entry plus a display code like "I&C SCI 46".
+export type PlannerCourse = CatalogCourse & { code: string };
+export type CourseDetails = { description: string | null; prerequisiteText: string | null };
 
 export type PlanPage = {
-  major: { id: string; name: string; catalogYear: string | null };
-  plan: Plan;
-  info: Record<string, CourseInfo>;
+  major: { id: string; name: string; catalogYear: string | null; requirements: Requirement[] };
+  courses: PlannerCourse[]; // every course this major could possibly need
+  details: Record<string, CourseDetails>; // long text, only for courses in the default plan
+  apExams: ApExam[];
+  entryYear: number; // default first Fall
+  offeredSince: number;
 };
 
 // Fall of the current academic year: from July on, plan from this Fall.
 const academicStartYear = (now: Date) => (now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1);
 
+const requirementCourses = (reqs: Requirement[]): string[] =>
+  reqs.flatMap((r) => (r.requirementType === "Group" ? requirementCourses(r.requirements) : r.courses));
+
+const treeCourses = (tree: PrereqTree | null): string[] => {
+  if (!tree) return [];
+  if ("prereqType" in tree) return tree.prereqType === "course" ? [normalizeCourseId(tree.courseId)] : [];
+  return ("AND" in tree ? tree.AND : "OR" in tree ? tree.OR : tree.NOT).flatMap(treeCourses);
+};
+
 export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
   "use cache";
   cacheLife("days");
-  const [major, catalog] = await Promise.all([loadMajor(majorId), loadCatalog()]);
+  const [major] = await db.select().from(majors).where(eq(majors.id, majorId));
   if (!major) return null;
 
-  const startYear = academicStartYear(new Date());
-  const plan = buildPlan(major.requirements, catalog, { startYear });
+  const entryYear = academicStartYear(new Date());
+  const offeredSince = entryYear - 4;
 
-  const ids = [...new Set(plan.quarters.flatMap((q) => q.items).concat(plan.unscheduled.map((u) => u.item)).filter((i) => !i.placeholder).map((i) => baseId(i.id)))];
-  const rows = ids.length
-    ? await db
-        .select({ id: courses.id, department: courses.department, courseNumber: courses.courseNumber, description: courses.description, prerequisiteText: courses.prerequisiteText, terms: courses.terms })
-        .from(courses)
-        .where(inArray(courses.id, ids))
+  // Walk requirements and every branch of every prerequisite tree, a level at a time, so the
+  // browser gets exactly the courses any choice of options could pull in.
+  const subset = new Map<string, PlannerCourse>();
+  for (let frontier = [...new Set(requirementCourses(major.requirements))]; frontier.length; ) {
+    const rows = await db
+      .select({ id: courses.id, title: courses.title, department: courses.department, courseNumber: courses.courseNumber, minUnits: courses.minUnits, maxUnits: courses.maxUnits, prerequisiteTree: courses.prerequisiteTree, terms: courses.terms, courseLevel: courses.courseLevel, restriction: courses.restriction })
+      .from(courses)
+      .where(inArray(courses.id, frontier));
+    for (const r of rows)
+      subset.set(r.id, {
+        id: r.id,
+        code: `${r.department} ${r.courseNumber}`,
+        title: r.title,
+        minUnits: r.minUnits,
+        maxUnits: r.maxUnits,
+        prerequisiteTree: r.prerequisiteTree,
+        terms: r.terms.filter((t) => Number(t.slice(0, 4)) >= offeredSince), // only recent offerings matter
+        courseLevel: r.courseLevel,
+        restriction: r.restriction && /seniors only/i.test(r.restriction) ? r.restriction : null, // the only part the planner reads
+      });
+    frontier = [...new Set(rows.flatMap((r) => treeCourses(r.prerequisiteTree)))].filter((id) => !subset.has(id));
+  }
+
+  // Long text only for the default plan's courses, to keep the page small.
+  const plan = buildPlan(major.requirements, new Map(subset), { startYear: entryYear, offeredSince });
+  const planned = [...new Set(plan.quarters.flatMap((q) => q.items).filter((i) => !i.placeholder).map((i) => i.id.split("#")[0]))];
+  const detailRows = planned.length
+    ? await db.select({ id: courses.id, description: courses.description, prerequisiteText: courses.prerequisiteText }).from(courses).where(inArray(courses.id, planned))
     : [];
-  const order: Season[] = ["Fall", "Winter", "Spring"];
-  const info = Object.fromEntries(rows.map((r) => [r.id, {
-    code: `${r.department} ${r.courseNumber}`,
-    description: r.description,
-    prerequisiteText: r.prerequisiteText,
-    seasons: order.filter((s) => offeredSeasons(r.terms, startYear - 4)?.has(s)),
-  } satisfies CourseInfo]));
 
-  return { major: { id: major.id, name: major.name, catalogYear: major.catalogYear }, plan, info };
+  const exams = await db.select({ name: apExams.name, catalogueName: apExams.catalogueName, rewards: apExams.rewards }).from(apExams).orderBy(asc(apExams.name));
+
+  return {
+    major: { id: major.id, name: major.name, catalogYear: major.catalogYear, requirements: major.requirements },
+    courses: [...subset.values()],
+    details: Object.fromEntries(detailRows.map((r) => [r.id, { description: r.description, prerequisiteText: r.prerequisiteText }])),
+    apExams: exams,
+    entryYear,
+    offeredSince,
+  };
 }

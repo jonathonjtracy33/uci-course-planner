@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { CourseInfo, PlanPage } from "@/lib/data";
-import type { PlannedItem, Quarter } from "@/lib/planner";
+import { useEffect, useState } from "react";
+import type { PlanPage, PlannerCourse } from "@/lib/data";
+import { buildPlan, type PlannedItem, type Quarter } from "@/lib/planner";
+import { applyApCredit } from "@/lib/planner/ap";
+import { SettingsPanel } from "./settings-panel";
+import { usePlanSettings } from "./use-plan-settings";
 
 const FULL_LOAD = 16; // a typical full-time quarter
 
@@ -10,37 +13,47 @@ const baseId = (id: string) => id.split("#")[0];
 const shortName = (name: string) => name.replace(/^Major in /, "");
 
 type Role = "selected" | "requires" | "unlocks" | "dimmed" | null;
+type Lookup = { courses: Map<string, PlannerCourse>; details: PlanPage["details"] };
 
-export function PlanView({ major, plan, info }: PlanPage) {
+export function PlanView({ major, courses: courseList, details, apExams, entryYear, offeredSince }: PlanPage) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [settings, update] = usePlanSettings(entryYear);
 
-  const items = useMemo(() => new Map(plan.quarters.flatMap((q) => q.items).concat(plan.unscheduled.map((u) => u.item)).map((i) => [i.id, i])), [plan]);
-  const quarterOf = useMemo(() => new Map(plan.quarters.flatMap((q) => q.items.map((i) => [i.id, q.label] as const))), [plan]);
-  const dependents = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const i of items.values()) for (const p of [...i.prereqs, ...i.coreqs]) map.set(p, [...(map.get(p) ?? []), i.id]);
-    return map;
-  }, [items]);
+  // The whole planner runs here in the browser (~20 ms), so every setting change is instant.
+  // The React Compiler memoizes these, so they only recompute when their inputs change.
+  const courses = new Map(courseList.map((c) => [c.id, c]));
+  const credit = applyApCredit(apExams, settings.ap);
+  const plan = buildPlan(major.requirements, courses, {
+    startYear: settings.entryYear,
+    firstQuarter: settings.firstQuarter,
+    maxUnitsPerQuarter: settings.maxUnits,
+    completed: [...settings.taken, ...credit.completed],
+    exams: credit.exams,
+    offeredSince,
+  });
+  const lookup: Lookup = { courses, details };
+
+  const items = new Map(plan.quarters.flatMap((q) => q.items).concat(plan.unscheduled.map((u) => u.item)).map((i) => [i.id, i]));
+  const quarterOf = new Map(plan.quarters.flatMap((q) => q.items.map((i) => [i.id, q.label] as const)));
+  const dependents = new Map<string, string[]>();
+  for (const i of items.values()) for (const p of [...i.prereqs, ...i.coreqs]) dependents.set(p, [...(dependents.get(p) ?? []), i.id]);
 
   // Everything the selected course transitively requires, and everything it unlocks.
-  const { requires, unlocks } = useMemo(() => {
-    const walk = (start: string, next: (id: string) => string[]) => {
-      const seen = new Set<string>();
-      const stack = [...next(start)];
-      while (stack.length) {
-        const id = stack.pop()!;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        stack.push(...next(id));
-      }
-      return seen;
-    };
-    if (!selectedId) return { requires: new Set<string>(), unlocks: new Set<string>() };
-    return {
-      requires: walk(selectedId, (id) => { const i = items.get(id); return i ? [...i.prereqs, ...i.coreqs] : []; }),
-      unlocks: walk(selectedId, (id) => dependents.get(id) ?? []),
-    };
-  }, [selectedId, items, dependents]);
+  const walk = (start: string, next: (id: string) => string[]) => {
+    const seen = new Set<string>();
+    const stack = [...next(start)];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      stack.push(...next(id));
+    }
+    return seen;
+  };
+  const requiresOf = (id: string) => walk(id, (x) => { const i = items.get(x); return i ? [...i.prereqs, ...i.coreqs] : []; });
+  const selected = selectedId ? items.get(selectedId) ?? null : null;
+  const requires = selected ? requiresOf(selected.id) : new Set<string>();
+  const unlocks = selected ? walk(selected.id, (x) => dependents.get(x) ?? []) : new Set<string>();
 
   const roleOf = (id: string): Role => {
     if (!selectedId) return null;
@@ -58,9 +71,17 @@ export function PlanView({ major, plan, info }: PlanPage) {
 
   const all = [...items.values()];
   const totalUnits = all.reduce((s, i) => s + i.units, 0);
-  const years = Array.from({ length: Math.ceil(plan.quarters.length / 3) }, (_, y) => plan.quarters.slice(y * 3, y * 3 + 3));
-  const selected = selectedId ? items.get(selectedId) ?? null : null;
+  // Group by academic year; quarters before the plan starts show as done.
+  const lastIndex = plan.quarters.at(-1)?.index ?? 11;
+  const years = Array.from({ length: Math.floor(lastIndex / 3) + 1 }, (_, y) =>
+    [0, 1, 2].map((s) => plan.quarters.find((q) => q.index === y * 3 + s) ?? { index: y * 3 + s, past: true as const }));
   const select = (id: string) => setSelectedId((cur) => (cur === id ? null : id));
+  // Taking a course means its prerequisites were taken too.
+  const markTaken = (id: string) => {
+    const ids = [id, ...requiresOf(id)].map(baseId).filter((x) => courses.has(x));
+    update({ taken: [...new Set([...settings.taken, ...ids])] });
+    setSelectedId(null);
+  };
 
   return (
     <div>
@@ -75,6 +96,17 @@ export function PlanView({ major, plan, info }: PlanPage) {
           <Stat label="Per quarter" value={`~${plan.majorUnitsPerQuarter}`} />
         </dl>
       </header>
+
+      <div className="mt-6">
+        <SettingsPanel
+          settings={settings}
+          update={update}
+          defaultEntryYear={entryYear}
+          courses={courses}
+          apExams={apExams}
+          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {} })}
+        />
+      </div>
 
       {plan.warnings.length > 0 && (
         <ul className="mt-6 space-y-1 rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn-ink">
@@ -94,10 +126,12 @@ export function PlanView({ major, plan, info }: PlanPage) {
           {years.map((quarters, y) => (
             <section key={y} aria-labelledby={`year-${y}`}>
               <h2 id={`year-${y}`} className="mb-2 text-sm font-semibold text-muted">
-                Year {y + 1}{y >= 4 && " (overflow)"}
+                Year {y + 1}{y >= 4 && " (past 4 years)"}
               </h2>
               <div className="grid gap-3 sm:grid-cols-3">
-                {quarters.map((q) => <QuarterCard key={q.label} quarter={q} info={info} roleOf={roleOf} onSelect={select} />)}
+                {quarters.map((q) => "past" in q
+                  ? <PastQuarter key={q.index} index={q.index} entryYear={settings.entryYear} />
+                  : <QuarterCard key={q.index} quarter={q} lookup={lookup} roleOf={roleOf} onSelect={select} />)}
               </div>
             </section>
           ))}
@@ -108,7 +142,7 @@ export function PlanView({ major, plan, info }: PlanPage) {
               <ul className="space-y-2">
                 {plan.unscheduled.map(({ item, reason }) => (
                   <li key={item.id} className="text-sm">
-                    <CourseChip item={item} info={info} role={roleOf(item.id)} onSelect={select} />
+                    <CourseChip item={item} lookup={lookup} role={roleOf(item.id)} onSelect={select} />
                     <p className="mt-1 text-xs text-muted">{reason}</p>
                   </li>
                 ))}
@@ -120,7 +154,7 @@ export function PlanView({ major, plan, info }: PlanPage) {
         <aside className="hidden lg:block">
           <div className="sticky top-6">
             {selected ? (
-              <CourseDetails item={selected} info={info} quarter={quarterOf.get(selected.id)} items={items} dependents={dependents.get(selected.id) ?? []} onSelect={select} onClose={() => setSelectedId(null)} />
+              <CourseDetails item={selected} lookup={lookup} quarter={quarterOf.get(selected.id)} items={items} dependents={dependents.get(selected.id) ?? []} onSelect={select} onMarkTaken={markTaken} onClose={() => setSelectedId(null)} />
             ) : (
               <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted">
                 Select a course to see why it&apos;s in your plan, what it requires, and what it unlocks.
@@ -133,7 +167,7 @@ export function PlanView({ major, plan, info }: PlanPage) {
       {/* Mobile: details slide up as a sheet */}
       {selected && (
         <div className="fixed inset-x-0 bottom-0 z-20 max-h-[70vh] overflow-y-auto rounded-t-2xl border-t border-border bg-surface shadow-2xl lg:hidden">
-          <CourseDetails item={selected} info={info} quarter={quarterOf.get(selected.id)} items={items} dependents={dependents.get(selected.id) ?? []} onSelect={select} onClose={() => setSelectedId(null)} />
+          <CourseDetails item={selected} lookup={lookup} quarter={quarterOf.get(selected.id)} items={items} dependents={dependents.get(selected.id) ?? []} onSelect={select} onMarkTaken={markTaken} onClose={() => setSelectedId(null)} />
         </div>
       )}
     </div>
@@ -158,7 +192,17 @@ function Legend({ className, label }: { className: string; label: string }) {
   );
 }
 
-function QuarterCard({ quarter, info, roleOf, onSelect }: { quarter: Quarter; info: Record<string, CourseInfo>; roleOf: (id: string) => Role; onSelect: (id: string) => void }) {
+function PastQuarter({ index, entryYear }: { index: number; entryYear: number }) {
+  const season = (["Fall", "Winter", "Spring"] as const)[index % 3];
+  const year = entryYear + Math.floor(index / 3) + (season === "Fall" ? 0 : 1);
+  return (
+    <div className="hidden min-w-0 rounded-xl border border-dashed border-border p-3 text-sm text-muted sm:block">
+      {season} {year} <span className="text-xs">· done</span>
+    </div>
+  );
+}
+
+function QuarterCard({ quarter, lookup, roleOf, onSelect }: { quarter: Quarter; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void }) {
   const open = Math.max(0, FULL_LOAD - quarter.units);
   return (
     <div className="flex min-w-0 flex-col rounded-xl border border-border bg-surface p-3">
@@ -171,7 +215,7 @@ function QuarterCard({ quarter, info, roleOf, onSelect }: { quarter: Quarter; in
       </div>
       <ul className="mt-3 flex-1 space-y-1.5">
         {quarter.items.map((item) => (
-          <li key={item.id}><CourseChip item={item} info={info} role={roleOf(item.id)} onSelect={onSelect} /></li>
+          <li key={item.id}><CourseChip item={item} lookup={lookup} role={roleOf(item.id)} onSelect={onSelect} /></li>
         ))}
       </ul>
       {open > 0 && <p className="mt-2 text-xs text-muted">+{open} units open for GEs</p>}
@@ -186,8 +230,8 @@ const roleStyles: Record<Exclude<Role, null>, string> = {
   dimmed: "opacity-35",
 };
 
-function CourseChip({ item, info, role, onSelect }: { item: PlannedItem; info: Record<string, CourseInfo>; role: Role; onSelect: (id: string) => void }) {
-  const code = item.placeholder ? "Elective" : info[baseId(item.id)]?.code ?? item.id;
+function CourseChip({ item, lookup, role, onSelect }: { item: PlannedItem; lookup: Lookup; role: Role; onSelect: (id: string) => void }) {
+  const code = item.placeholder ? "Elective" : lookup.courses.get(baseId(item.id))?.code ?? item.id;
   const isPrereq = item.reason.startsWith("Prerequisite");
   const kind = item.placeholder
     ? "border-dashed border-muted/60 bg-transparent"
@@ -208,12 +252,14 @@ function CourseChip({ item, info, role, onSelect }: { item: PlannedItem; info: R
   );
 }
 
-function CourseDetails({ item, info, quarter, items, dependents, onSelect, onClose }: {
-  item: PlannedItem; info: Record<string, CourseInfo>; quarter?: string; items: Map<string, PlannedItem>; dependents: string[];
-  onSelect: (id: string) => void; onClose: () => void;
+function CourseDetails({ item, lookup, quarter, items, dependents, onSelect, onMarkTaken, onClose }: {
+  item: PlannedItem; lookup: Lookup; quarter?: string; items: Map<string, PlannedItem>; dependents: string[];
+  onSelect: (id: string) => void; onMarkTaken: (id: string) => void; onClose: () => void;
 }) {
-  const details = info[baseId(item.id)];
-  const codeOf = (id: string) => info[baseId(id)]?.code ?? id;
+  const course = lookup.courses.get(baseId(item.id));
+  const details = lookup.details[baseId(item.id)];
+  const seasons = (["Fall", "Winter", "Spring"] as const).filter((s) => course?.terms.some((t) => t.endsWith(` ${s}`)));
+  const codeOf = (id: string) => lookup.courses.get(baseId(id))?.code ?? id;
   const links = (ids: string[]) => ids.filter((id) => items.has(id)).map((id) => (
     <button key={id} type="button" onClick={() => onSelect(id)} className="rounded-md bg-background px-2 py-0.5 font-mono text-xs hover:text-brand">{codeOf(id)}</button>
   ));
@@ -232,12 +278,18 @@ function CourseDetails({ item, info, quarter, items, dependents, onSelect, onClo
       <dl className="mt-4 space-y-3">
         <Row label="Why it's here">{item.reason}</Row>
         <Row label="When">{quarter ?? "Not scheduled"} · {item.units} units</Row>
-        {details && <Row label="Usually offered">{details.seasons.length ? details.seasons.join(", ") : "No recent offering data"}</Row>}
+        {course && <Row label="Usually offered">{seasons.length ? seasons.join(", ") : "No recent offering data"}</Row>}
         {requires.length > 0 && <Row label="Requires"><span className="flex flex-wrap gap-1">{links(requires)}</span></Row>}
         {dependents.length > 0 && <Row label="Unlocks"><span className="flex flex-wrap gap-1">{links(dependents)}</span></Row>}
         {details?.prerequisiteText && <Row label="Catalog prerequisites"><span className="text-muted">{details.prerequisiteText}</span></Row>}
         {item.placeholder && <Row label="What to do">Pick a course from your department&apos;s approved list for this requirement.</Row>}
       </dl>
+
+      {!item.placeholder && (
+        <button type="button" onClick={() => onMarkTaken(item.id)} className="mt-4 w-full rounded-lg border border-border px-3 py-2 text-sm font-medium hover:border-brand hover:text-brand">
+          ✓ Mark as taken{requires.length > 0 && " (with its prerequisites)"}
+        </button>
+      )}
 
       {details?.description && <p className="mt-4 border-t border-border pt-4 text-muted">{details.description}</p>}
     </div>

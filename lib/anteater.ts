@@ -1,5 +1,6 @@
 // Thin client for the free Anteater API (https://anteaterapi.com). No key needed; limit is 1000 requests/hour.
 import type { PrereqTree, Requirement } from "@/db/schema";
+import type { CourseGrant } from "@/lib/planner/ap";
 
 const BASE = "https://anteaterapi.com/v2/rest";
 
@@ -43,6 +44,14 @@ export async function fetchAllCourses(onPage?: (count: number) => void): Promise
     if (page.length < 100) return all;
   }
 }
+
+export type ApiApExam = {
+  fullName: string;
+  catalogueName: string | null;
+  rewards: { acceptableScores: number[]; coursesGranted: CourseGrant }[];
+};
+
+export const fetchApExams = () => get<ApiApExam[]>("/apExams");
 
 export const fetchMajorList = () => get<ApiMajorSummary[]>("/programs/majors");
 

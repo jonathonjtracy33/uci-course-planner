@@ -5,6 +5,7 @@ import { SEASONS, type Catalog, type CatalogCourse, type PlannedItem, type Quart
 
 export type ScheduleOptions = {
   startYear: number;
+  firstQuarter: number;
   maxUnitsPerQuarter: number;
   quarters: number;
   maxQuarters: number;
@@ -67,10 +68,12 @@ export function schedule(items: PlannedItem[], catalog: Catalog, opts: ScheduleO
   const done = new Set<string>(); // finished in an earlier quarter
   const quarters: Quarter[] = [];
 
-  for (let q = 0; q < opts.maxQuarters && remaining.size; q++) {
+  // q counts quarters since the student's first Fall, so class-standing rules stay correct
+  // for a student who starts planning partway through.
+  for (let q = opts.firstQuarter; q < opts.maxQuarters && remaining.size; q++) {
     const season = SEASONS[q % 3];
     const year = opts.startYear + Math.floor(q / 3) + (season === "Fall" ? 0 : 1);
-    const quarter: Quarter = { season, year, label: `${season} ${year}`, items: [], units: 0 };
+    const quarter: Quarter = { index: q, season, year, label: `${season} ${year}`, items: [], units: 0 };
     const placed = new Set<string>();
 
     const canTake = (i: PlannedItem) =>
@@ -124,8 +127,13 @@ export function schedule(items: PlannedItem[], catalog: Catalog, opts: ScheduleO
     quarters.push(quarter);
   }
 
-  // Keep the full 4 years even if the plan finishes early; drop empty overflow quarters.
-  while (quarters.length > opts.quarters && quarters.at(-1)!.items.length === 0) quarters.pop();
+  // Keep every quarter up to graduation even if the plan finishes early; drop empty overflow quarters.
+  for (let q = (quarters.at(-1)?.index ?? opts.firstQuarter - 1) + 1; q < opts.quarters; q++) {
+    const season = SEASONS[q % 3];
+    const year = opts.startYear + Math.floor(q / 3) + (season === "Fall" ? 0 : 1);
+    quarters.push({ index: q, season, year, label: `${season} ${year}`, items: [], units: 0 });
+  }
+  while (quarters.length && quarters.at(-1)!.index >= opts.quarters && quarters.at(-1)!.items.length === 0) quarters.pop();
 
   const unscheduled = [...remaining.values()].map((item) => {
     const waiting = [...item.prereqs, ...item.coreqs].filter((p) => !done.has(p));

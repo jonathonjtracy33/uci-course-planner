@@ -2,8 +2,8 @@
 // Run with: npm run ingest (DATABASE_URL comes from .env.local)
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { courses, majors } from "@/db/schema";
-import { fetchAllCourses, fetchMajor, fetchMajorList } from "@/lib/anteater";
+import { apExams, courses, majors } from "@/db/schema";
+import { fetchAllCourses, fetchApExams, fetchMajor, fetchMajorList } from "@/lib/anteater";
 
 const CHUNK = 200;
 
@@ -80,7 +80,23 @@ async function ingestMajors() {
   console.log();
 }
 
+async function ingestApExams() {
+  const exams = await fetchApExams();
+  for (const e of exams) {
+    const row = {
+      name: e.fullName,
+      catalogueName: e.catalogueName,
+      rewards: e.rewards.map((r) => ({ scores: r.acceptableScores, courses: r.coursesGranted })),
+      updatedAt: new Date(),
+    };
+    await db.insert(apExams).values(row).onConflictDoUpdate({ target: apExams.name, set: row });
+  }
+  console.log(`  saved ${exams.length} AP exams`);
+}
+
 async function main() {
+  console.log("AP exams:");
+  await ingestApExams();
   console.log("Courses:");
   await ingestCourses();
   console.log("Majors:");

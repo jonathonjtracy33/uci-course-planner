@@ -9,7 +9,7 @@ export const normalizeCourseId = (id: string) => id.replace(/\s+/g, "");
 export type PrereqContext = {
   catalog: Catalog;
   have: Set<string>; // completed or already in the plan
-  exams: Set<string>; // upper-cased exam names
+  exams: Map<string, number>; // upper-cased exam name -> score
 };
 
 const isLeaf = (t: PrereqTree): t is PrereqLeaf => "prereqType" in t;
@@ -21,7 +21,7 @@ const isLeaf = (t: PrereqTree): t is PrereqLeaf => "prereqType" in t;
 export function treeCost(tree: PrereqTree | null, ctx: PrereqContext, memo = new Map<string, number>(), visiting = new Set<string>()): number {
   if (!tree) return 0;
   if (isLeaf(tree)) {
-    if (tree.prereqType === "exam") return ctx.exams.has(tree.examName.toUpperCase()) ? 0 : Infinity;
+    if (tree.prereqType === "exam") return passed(tree.examName, tree.minGrade, ctx) ? 0 : Infinity;
     return courseCost(normalizeCourseId(tree.courseId), ctx, memo, visiting);
   }
   if ("AND" in tree) return tree.AND.map((t) => treeCost(t, ctx, memo, visiting)).filter(Number.isFinite).reduce((a, b) => a + b, 0);
@@ -30,6 +30,14 @@ export function treeCost(tree: PrereqTree | null, ctx: PrereqContext, memo = new
 }
 
 // Cost of adding `id` to the plan: the course itself plus whatever its prerequisites drag in.
+// minGrade on an exam leaf is a score ("4"); a non-numeric one just means "took it".
+function passed(examName: string, minGrade: string | undefined, ctx: PrereqContext): boolean {
+  const score = ctx.exams.get(examName.toUpperCase());
+  if (score === undefined) return false;
+  const needed = Number(minGrade);
+  return Number.isFinite(needed) ? score >= needed : true;
+}
+
 export function courseCost(id: string, ctx: PrereqContext, memo = new Map<string, number>(), visiting = new Set<string>()): number {
   if (ctx.have.has(id)) return 0;
   const course = ctx.catalog.get(id);

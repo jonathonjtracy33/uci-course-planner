@@ -20,7 +20,7 @@ function clone(s: Selection): Selection {
 }
 
 // How much a selection "weighs": every course plus everything its prerequisites drag in.
-function weight(s: Selection, catalog: Catalog, completed: Set<string>, exams: Set<string>): number {
+function weight(s: Selection, catalog: Catalog, completed: Set<string>, exams: Map<string, number>): number {
   const ctx: PrereqContext = { catalog, have: new Set(completed), exams };
   const memo = new Map<string, number>();
   let total = s.placeholders.length + [...s.repeats.values()].reduce((a, b) => a + b, 0);
@@ -31,13 +31,13 @@ function weight(s: Selection, catalog: Catalog, completed: Set<string>, exams: S
   return total;
 }
 
-export function selectCourses(requirements: Requirement[], catalog: Catalog, completed: Set<string>, exams: Set<string>): Selection {
+export function selectCourses(requirements: Requirement[], catalog: Catalog, completed: Set<string>, exams: Map<string, number>): Selection {
   const selection: Selection = { courses: new Map(), repeats: new Map(), placeholders: [], warnings: [] };
   for (const req of requirements) apply(req, selection, catalog, completed, exams);
   return selection;
 }
 
-function apply(req: Requirement, sel: Selection, catalog: Catalog, completed: Set<string>, exams: Set<string>) {
+function apply(req: Requirement, sel: Selection, catalog: Catalog, completed: Set<string>, exams: Map<string, number>) {
   const reason = `Major: ${req.label}`;
   const have = () => new Set([...completed, ...sel.courses.keys()]);
 

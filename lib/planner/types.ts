@@ -17,12 +17,13 @@ export type Season = "Fall" | "Winter" | "Spring";
 export const SEASONS: Season[] = ["Fall", "Winter", "Spring"];
 
 export type PlanOptions = {
-  startYear: number; // calendar year of the first Fall quarter
+  startYear: number; // calendar year of the student's first Fall at UCI
+  firstQuarter?: number; // quarters since that Fall to start planning from (0 = Fall of year 1); earlier ones are done
   completed?: string[]; // courses already taken (or transferred in)
-  exams?: string[]; // AP/placement exams passed, e.g. "AP CALCULUS BC"
+  exams?: Record<string, number>; // exam name -> score, e.g. { "AP CALCULUS BC": 5 }
   maxUnitsPerQuarter?: number; // default 16
   balance?: boolean; // spread major courses evenly to leave room for GEs; default true
-  quarters?: number; // target plan length, default 12 (4 years)
+  quarters?: number; // graduate within this many quarters of starting, default 12 (4 years)
   maxQuarters?: number; // hard stop when a plan overflows, default 18
   offeredSince?: number; // only trust offerings from this year on; default startYear - 4
 };
@@ -38,6 +39,7 @@ export type PlannedItem = {
 };
 
 export type Quarter = {
+  index: number; // quarters since the student's first Fall (0-11 for a 4-year plan)
   season: Season;
   year: number; // calendar year (Winter/Spring fall in the year after their Fall)
   label: string; // "Fall 2026"

@@ -17,7 +17,7 @@ const displayId = (id: string, catalog: Catalog) => {
 
 export function buildPlan(requirements: Requirement[], catalog: Catalog, options: PlanOptions): Plan {
   const completed = new Set(options.completed ?? []);
-  const exams = new Set((options.exams ?? []).map((e) => e.toUpperCase()));
+  const exams = new Map(Object.entries(options.exams ?? {}).map(([name, score]) => [name.toUpperCase(), score]));
   const selection = selectCourses(requirements, catalog, completed, exams);
 
   // Close over prerequisites. Courses picked for the major are already "in the plan", so an
@@ -54,15 +54,17 @@ export function buildPlan(requirements: Requirement[], catalog: Catalog, options
     items.push({ id: `placeholder:${n}`, title: p.title, units: p.units, reason: p.reason, placeholder: true, prereqs: [], coreqs: [] }));
 
   const quarters = options.quarters ?? 12;
+  const firstQuarter = options.firstQuarter ?? 0;
   const maxUnits = options.maxUnitsPerQuarter ?? 16;
   const run = (cap: number) => schedule(items, catalog, {
     startYear: options.startYear,
+    firstQuarter,
     maxUnitsPerQuarter: cap,
     quarters,
     maxQuarters: options.maxQuarters ?? 18,
     offeredSince: options.offeredSince ?? options.startYear - 4,
   });
-  const fits = (r: ReturnType<typeof run>) => r.quarters.length <= quarters && r.unscheduled.length === 0;
+  const fits = (r: ReturnType<typeof run>) => r.quarters.every((q) => q.index < quarters) && r.unscheduled.length === 0;
 
   // Balancing: use the lightest per-quarter major load that still finishes on time, so the
   // plan isn't front-loaded and every quarter keeps room for GEs.
@@ -70,7 +72,7 @@ export function buildPlan(requirements: Requirement[], catalog: Catalog, options
   let result = run(maxUnits);
   if (options.balance !== false && fits(result)) {
     const total = items.reduce((sum, i) => sum + i.units, 0);
-    for (let c = Math.max(4, Math.ceil(total / quarters)); c < maxUnits; c++) {
+    for (let c = Math.max(4, Math.ceil(total / Math.max(1, quarters - firstQuarter))); c < maxUnits; c++) {
       const attempt = run(c);
       if (fits(attempt)) {
         [cap, result] = [c, attempt];
@@ -82,7 +84,8 @@ export function buildPlan(requirements: Requirement[], catalog: Catalog, options
 
   const warnings = [...selection.warnings];
   if (requirements.length === 0) warnings.push("UCI's catalog data doesn't list any requirements for this major yet.");
-  if (scheduled.length > quarters) warnings.push(`This plan needs ${scheduled.length} quarters, more than ${quarters / 3} years. Adding AP credit or courses you've already taken, or raising the unit limit, may shorten it.`);
+  const last = scheduled.at(-1);
+  if (last && last.index >= quarters) warnings.push(`This plan runs to ${last.label}, past ${quarters / 3} years. Adding AP credit or courses you've already taken, or raising the unit limit, may shorten it.`);
   if (unscheduled.length) warnings.push(`${unscheduled.length} course(s) couldn't be scheduled.`);
   return { quarters: scheduled, majorUnitsPerQuarter: cap, unscheduled, warnings };
 }

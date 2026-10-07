@@ -1,4 +1,5 @@
 import { pgTable, text, real, jsonb, timestamp } from "drizzle-orm/pg-core";
+import type { ApExam } from "@/lib/planner/ap";
 
 // A prerequisite tree as the Anteater API returns it, e.g.
 // { AND: [{ prereqType: "course", courseId: "I&C SCI 46", ... }, { OR: [...] }] }
@@ -35,5 +36,13 @@ export const courses = pgTable("courses", {
   prerequisiteText: text("prerequisite_text"),
   prerequisiteTree: jsonb("prerequisite_tree").$type<PrereqTree | null>(),
   terms: text("terms").array().notNull(), // past offerings, e.g. ["2024 Fall", "2025 Winter"]
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// UCI's AP credit rules, e.g. AP Calculus BC (4 or 5) grants MATH 2A and 2B.
+export const apExams = pgTable("ap_exams", {
+  name: text("name").primaryKey(), // "AP Calculus BC"
+  catalogueName: text("catalogue_name"), // "AP CALCULUS BC", as prerequisite trees spell it
+  rewards: jsonb("rewards").$type<ApExam["rewards"]>().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
