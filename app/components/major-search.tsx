@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { MajorSummary } from "@/lib/data";
 
 // ICS majors get a shortcut row; everyone else searches.
@@ -12,10 +12,8 @@ const shortName = (name: string) => name.replace(/^Major in /, "");
 export function MajorSearch({ majors }: { majors: MajorSummary[] }) {
   const [query, setQuery] = useState("");
   const featured = FEATURED.map((id) => majors.find((m) => m.id === id)).filter((m) => m !== undefined);
-  const results = useMemo(() => {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return majors.filter((m) => words.every((w) => m.name.toLowerCase().includes(w)));
-  }, [majors, query]);
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const results = majors.filter((m) => words.every((w) => m.name.toLowerCase().includes(w)));
 
   return (
     <div className="space-y-6">
