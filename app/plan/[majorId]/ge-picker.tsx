@@ -10,6 +10,7 @@ import { checkRestriction, type RestrictionCheck, type Standing } from "@/lib/re
 import { LiveBadge } from "./live-badge";
 import { MissingList } from "./missing-list";
 import type { GeCourses } from "./use-course-index";
+import { SEASON_LETTER } from "@/lib/planner/types";
 
 const LIMIT = 60;
 const numeralOf = (code: string) => (code === "GE-5" ? "V" : GE_CATEGORIES.find((c) => c.code === code)?.numeral ?? code);
@@ -56,7 +57,7 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const matches = geCourses && mode === "browse"
     ? pool
-        .filter((c) => c.ge.includes(selected) && (scheduleTerm || c.seasons === "*" || c.seasons.includes(quarter.season[0])) && !exclude.has(c.id) && !redundant(c, owned))
+        .filter((c) => c.ge.includes(selected) && (scheduleTerm || c.seasons === "*" || c.seasons.includes(SEASON_LETTER[quarter.season])) && !exclude.has(c.id) && !redundant(c, owned))
         .filter((c) => words.every((w) => `${c.code} ${c.title}`.toLowerCase().includes(w)))
         .map((c) => ({ c, status: courseStatus(c, student), restriction: checkRestriction(c.restriction, standing) }))
         // the catalogue's standard choices first, then courses the student can take now, then
@@ -133,7 +134,7 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
                 placeholder="Filter by code or title…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+                className="mt-2 w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
               />
             </>
           )}
@@ -198,12 +199,12 @@ export function GeRow({ course, hasTree, missing, restriction, reasons, highligh
         </p>
         <p className="mt-1 flex flex-wrap gap-1">
           {course.ge.map((g) => (
-            <span key={g} className={`rounded px-1.5 text-[10px] font-medium ${highlight?.includes(g) || (g.startsWith("GE-5") && highlight?.includes("GE-5")) ? "bg-brand text-white" : "bg-background text-muted"}`}>GE {numeralOf(g)}</span>
+            <span key={g} className={`rounded px-1.5 text-[10px] font-medium ${highlight?.includes(g) || (g.startsWith("GE-5") && highlight?.includes("GE-5")) ? "bg-brand text-white" : "bg-subtle text-muted"}`}>GE {numeralOf(g)}</span>
           ))}
         </p>
 
         {missing.length > 0 && (
-          <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+          <p className="mt-1 text-xs text-red-600">
             Course requires <MissingList missing={missing} onShowCourse={onShowCourse} />{" "}
             first ·{" "}
             <button type="button" onClick={() => onShowCourse(course.id)} className="underline underline-offset-2">see all requirements</button>
@@ -215,8 +216,8 @@ export function GeRow({ course, hasTree, missing, restriction, reasons, highligh
             <button type="button" onClick={() => onShowCourse(course.id)} className="underline underline-offset-2">see requirements</button>
           </p>
         )}
-        {restriction.kind === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">Restricted: {restriction.text}</p>}
-        {restriction.kind === "priority" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">Enrollment limit: {restriction.text}</p>}
+        {restriction.kind === "blocked" && <p className="mt-1 text-xs text-red-600">Restricted: {restriction.text}</p>}
+        {restriction.kind === "priority" && <p className="mt-1 text-xs text-red-600">Enrollment limit: {restriction.text}</p>}
         {reasons && <p className="mt-1 text-xs text-muted">{reasons.join(" · ")}</p>}
         {scheduleTerm && course.live?.term === scheduleTerm && <p className="mt-1"><LiveBadge live={course.live} /></p>}
       </div>

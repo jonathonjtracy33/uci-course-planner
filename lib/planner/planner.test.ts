@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrereqTree, Requirement } from "@/db/schema";
 import { buildPlan, type Catalog, type CatalogCourse, type Plan } from "./index";
+import { termAt, termIndexes } from "./types";
 import { courseCost, resolveTree, treeCost } from "./prereqs";
 import { applyApCredit, type ApExam } from "./ap";
 import { offeredSeasons } from "./schedule";
@@ -267,5 +268,50 @@ describe("AP credit", () => {
     const credit = applyApCredit(exams, { "AP Calculus BC": 5 });
     const plan = buildPlan([take("calc", ["MATH2A", "MATH2B", "MATH2D"])], catalog, { ...opts, ...credit });
     expect(planned(plan)).toEqual(["MATH2D"]);
+  });
+});
+
+describe("graduation goals and summers", () => {
+  const chain = catalogOf(
+    ...["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"].map((id, i, all) =>
+      course(id, { prerequisiteTree: i ? req(all[i - 1]) : null, terms: [...ALL_SEASONS, "2025 Summer10wk", "2024 Summer1"] })),
+  );
+  const ten = take("chain", ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]);
+
+  it("labels summer terms between Spring and the next Fall", () => {
+    expect(termAt(2.5, 2026)).toMatchObject({ season: "Summer", label: "Summer 2027" });
+    expect(termIndexes(0, 6, true)).toEqual([0, 1, 2, 2.5, 3, 4, 5, 5.5]);
+  });
+
+  it("uses summers to finish a long chain sooner", () => {
+    const regular = buildPlan([ten], chain, { ...opts, quarters: 9 });
+    const withSummers = buildPlan([ten], chain, { ...opts, quarters: 9, summers: true });
+    expect(regular.quarters.at(-1)!.index).toBe(9); // 10 quarters in a row: past the 9-quarter goal
+    expect(withSummers.quarters.at(-1)!.index).toBeLessThan(9);
+    expect(withSummers.quarters.some((q) => q.season === "Summer")).toBe(true);
+  });
+
+  it("only puts courses in summer that UCI offers in summer", () => {
+    const noSummer = catalogOf(course("A"), course("B", { prerequisiteTree: req("A") }), course("C", { prerequisiteTree: req("B") }), course("D", { prerequisiteTree: req("C") }));
+    const plan = buildPlan([take("abcd", ["A", "B", "C", "D"])], noSummer, { ...opts, summers: true });
+    expect(plan.quarters.filter((q) => q.season === "Summer")).toEqual([]);
+  });
+
+  it("moves senior-only courses earlier for a student graduating early", () => {
+    const catalog = catalogOf(course("CAPSTONE", { restriction: "Seniors only." }));
+    expect(buildPlan([take("cap", ["CAPSTONE"])], catalog, opts).quarters.find((q) => q.items.length)!.index).toBe(9);
+    expect(buildPlan([take("cap", ["CAPSTONE"])], catalog, { ...opts, quarters: 9 }).quarters.find((q) => q.items.length)!.index).toBe(6);
+  });
+
+  it("names the graduation goal when a plan runs past it", () => {
+    const plan = buildPlan([ten], chain, { ...opts, quarters: 9 });
+    expect(plan.warnings[0]).toContain("past your goal of graduating Spring 2029");
+  });
+
+  it("spreads the work out when the student is happy to take longer", () => {
+    const catalog = catalogOf(...Array.from({ length: 15 }, (_, i) => course(`C${i}`)));
+    const plan = buildPlan([take("all", catalog.keys().toArray())], catalog, { startYear: 2026, quarters: 15 });
+    expect(plan.majorUnitsPerQuarter).toBe(4);
+    expect(plan.quarters.at(-1)!.index).toBe(14);
   });
 });

@@ -8,7 +8,7 @@ const SHOW_ALTERNATIVES = 2;
 // opens what it requires.
 export function MissingList({ missing, onShowCourse }: { missing: Missing[]; onShowCourse: (id: string) => void }) {
   const course = (id: string, code: string) => (
-    <button key={id} type="button" onClick={() => onShowCourse(id)} className="font-mono font-semibold underline decoration-red-500 underline-offset-2 hover:text-red-700 dark:hover:text-red-300">
+    <button key={id} type="button" onClick={() => onShowCourse(id)} className="font-mono font-semibold underline decoration-red-500 underline-offset-2 hover:text-red-700">
       {code}
     </button>
   );

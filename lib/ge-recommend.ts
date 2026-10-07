@@ -6,6 +6,7 @@ import type { PrereqTree } from "@/db/schema";
 import { GE_ALTERNATIVES, GE_CATEGORIES, V_TOTAL, type GeProgress } from "./ge";
 import { courseStatus, type Missing, type StudentState } from "./prereq-status";
 import { checkRestriction, type RestrictionCheck, type Standing } from "./restrictions";
+import { SEASON_LETTER, type Season } from "./planner/types";
 
 export type GeCandidate = {
   id: string;
@@ -66,7 +67,7 @@ export function redundant(c: Pick<GeCandidate, "id" | "overlaps">, owned: Set<st
 export function recommendGes(input: {
   candidates: GeCandidate[];
   progress: GeProgress;
-  season: "Fall" | "Winter" | "Spring";
+  season: Season;
   student: StudentState;
   standing: Standing;
   exclude: Set<string>;
@@ -75,7 +76,7 @@ export function recommendGes(input: {
 }): Recommendation[] {
   const open = openNeeds(input.progress);
   const usual = new Set(GE_CATEGORIES.flatMap((c) => c.usual ?? []));
-  const offered = (c: GeCandidate) => c.seasons === "*" || c.seasons.includes(input.season[0]);
+  const offered = (c: GeCandidate) => c.seasons === "*" || c.seasons.includes(SEASON_LETTER[input.season]);
   const owned = new Set([...input.exclude, ...input.student.have]);
   const pool = input.candidates
     .filter((c) => !input.exclude.has(c.id) && c.seasons !== "" && offered(c) && !redundant(c, owned))

@@ -15,9 +15,11 @@ const LINKS = {
 
 export type NextCourse = { id: string; code: string; title: string; units: number; kind: "major" | "prereq" | "added"; live?: LiveSummary };
 
-export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, onExplore }: {
+export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, onExplore, onCalendar, onRemove }: {
   label: string;
   liveTerm: string | null;
+  onCalendar: () => void;
+  onRemove: (id: string) => void; // only for courses the student added
   courses: NextCourse[];
   isFirstYear: boolean;
   onPlanGes: () => void;
@@ -28,7 +30,7 @@ export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, 
   return (
     <section aria-labelledby="next-q" className="rounded-xl border border-border bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="next-q" className="text-sm font-semibold">Your next quarter: what to sign up for in {label}</h2>
+        <h2 id="next-q" className="text-base font-semibold">Your recommended {label} schedule</h2>
         <span className="text-xs text-muted">{units} units</span>
       </div>
 
@@ -41,16 +43,21 @@ export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, 
       {courses.length > 0 ? (
         <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
           {courses.map((c) => (
-            <li key={c.id} className="rounded-lg bg-background px-3 py-2 text-sm">
+            <li key={c.id} className="min-w-0 rounded-lg bg-subtle px-3 py-2 text-sm">
               <div className="flex items-baseline justify-between gap-2">
                 <a href={catalogueUrl(c.code)} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:text-brand hover:underline">
                   <span className="font-mono text-xs font-semibold">{c.code}</span> · {c.title}
                 </a>
-                <span className="shrink-0 text-xs text-muted">{c.kind === "added" ? "GE / elective" : c.kind === "prereq" ? "Prerequisite" : "Major"} · {c.units}u</span>
+                <span className="flex shrink-0 items-center gap-1 text-xs text-muted">
+                  {c.kind === "added" ? "Added" : c.kind === "prereq" ? "Prerequisite" : "Required"} · {c.units}u
+                  {c.kind === "added" && (
+                    <button type="button" onClick={() => onRemove(c.id)} aria-label={`Remove ${c.code}`} className="grid size-5 place-items-center rounded text-muted hover:bg-surface hover:text-foreground">×</button>
+                  )}
+                </span>
               </div>
               {posted && (
                 <div className="mt-1">
-                  {c.live ? <LiveBadge live={c.live} /> : <span className="text-[11px] font-medium text-red-600 dark:text-red-400">Not on the {label} schedule. Check with your counselor or pick another course.</span>}
+                  {c.live ? <LiveBadge live={c.live} /> : <span className="text-[11px] font-medium text-red-600">Not on the {label} schedule. Check with your counselor or pick another course.</span>}
                 </div>
               )}
             </li>
@@ -64,9 +71,10 @@ export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, 
         </p>
       )}
 
-      <button type="button" onClick={onExplore} className="mt-3 text-sm font-medium text-brand hover:underline">
-        Browse GEs and electives you can take in {label} →
-      </button>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
+        <button type="button" onClick={onCalendar} className="text-sm font-medium text-brand hover:underline">See it as a weekly calendar →</button>
+        <button type="button" onClick={onExplore} className="text-sm font-medium text-brand hover:underline">Browse GEs and electives you can take in {label} ↓</button>
+      </div>
 
       <details className="mt-4 rounded-lg bg-brand-soft px-3 py-2 text-sm" open={isFirstYear}>
         <summary className="cursor-pointer font-medium">How do I actually sign up for classes at UCI?</summary>

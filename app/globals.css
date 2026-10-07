@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
+/* DegreePath: a white page with UCI blue. One light theme on purpose. */
 :root {
-  --background: #f7f8fa;
+  --background: #ffffff;
+  --subtle: #f3f5f8; /* light fill for inputs, chips and rows inside cards */
   --surface: #ffffff;
   --foreground: #14181f;
   --muted: #5b6472;
@@ -13,27 +15,12 @@
   --gold-ink: #6b5400;
   --warn-soft: #fff4e5;
   --warn-ink: #8a4b00;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d1117;
-    --surface: #161b22;
-    --foreground: #e6edf3;
-    --muted: #8d96a3;
-    --border: #2a313c;
-    --brand: #4aa3df;
-    --brand-soft: #102a3d;
-    --gold: #ffd200;
-    --gold-soft: #2e2810;
-    --gold-ink: #f3d36b;
-    --warn-soft: #2d1f0c;
-    --warn-ink: #f0b46a;
-  }
+  color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-subtle: var(--subtle);
   --color-surface: var(--surface);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
@@ -47,9 +34,58 @@
   --color-warn-ink: var(--warn-ink);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-script: var(--font-script);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* ---- Home page intro --------------------------------------------------------------------
+   0.2s  "Welcome" is drawn stroke by stroke, then filled
+   3.3s  it fades away
+   3.9s  the tagline rises in word by word, then the button appears                        */
+
+.intro-welcome text {
+  stroke-dasharray: 1400;
+  stroke-dashoffset: 1400;
+  fill-opacity: 0;
+  animation:
+    intro-draw 2.2s cubic-bezier(0.55, 0.1, 0.35, 1) 0.15s forwards,
+    intro-fill 1.1s ease-in-out 0.6s forwards;
+}
+.intro-welcome {
+  animation: intro-out 0.7s ease-in 3.3s forwards;
+}
+.intro-pen {
+  transform: scaleX(0);
+  transform-origin: 70px 0; /* where the W starts */
+  animation: intro-pen 2.2s cubic-bezier(0.45, 0.05, 0.4, 1) 0.15s forwards;
+}
+@keyframes intro-pen { to { transform: scaleX(1); } }
+.intro-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.6em);
+  filter: blur(4px);
+  animation: intro-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: calc(3.9s + var(--i) * 0.11s);
+}
+.intro-after {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: intro-rise 0.6s ease-out forwards;
+  animation-delay: var(--delay, 5s);
+}
+
+@keyframes intro-draw { to { stroke-dashoffset: 0; } }
+@keyframes intro-fill { to { fill-opacity: 1; } }
+@keyframes intro-out { to { opacity: 0; transform: scale(0.97) translateY(-10px); filter: blur(6px); visibility: hidden; } }
+@keyframes intro-rise { to { opacity: 1; transform: none; filter: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-welcome { display: none; }
+  .intro-pen { animation: none; transform: none; }
+  .intro-word, .intro-after { animation: none; opacity: 1; transform: none; filter: none; }
 }

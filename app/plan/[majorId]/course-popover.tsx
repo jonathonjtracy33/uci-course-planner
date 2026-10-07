@@ -135,7 +135,7 @@ export function CoursePopover({ courseId, liveTerm, student, isTaken, onMarkTake
             <dt className="text-xs font-medium text-muted">Prerequisites</dt>
             <dd>
               {!hasPrereqs ? "None" : taken ? "You've taken this course." : status.met ? <span className="text-brand">✓ You&apos;ll have these done in time</span> : (
-                <span className="flex flex-wrap items-center gap-1 text-red-600 dark:text-red-400">
+                <span className="flex flex-wrap items-center gap-1 text-red-600">
                   You still need: <MissingList missing={status.missing} onShowCourse={(id) => setStack((st) => [...st, id])} />
                 </span>
               )}
@@ -145,7 +145,7 @@ export function CoursePopover({ courseId, liveTerm, student, isTaken, onMarkTake
           {course.restriction && (
             <div>
               <dt className="text-xs font-medium text-muted">Enrollment restriction</dt>
-              <dd className="text-red-600 dark:text-red-400">{course.restriction}</dd>
+              <dd className="text-red-600">{course.restriction}</dd>
             </div>
           )}
           {liveTerm && (
@@ -166,7 +166,7 @@ export function CoursePopover({ courseId, liveTerm, student, isTaken, onMarkTake
                               <td className="pr-2 font-mono">{s.sectionCode}</td>
                               <td className="pr-2">{m ? `${m.days} ${clock(m.startTime)}–${clock(m.endTime)}` : "TBA"}</td>
                               <td className="pr-2">{s.instructors.filter((i) => i !== "STAFF").join(", ") || "Staff"}</td>
-                              <td className={s.status === "OPEN" ? "text-emerald-600 dark:text-emerald-400" : s.status === "FULL" ? "text-red-600 dark:text-red-400" : "text-warn-ink"}>{s.status === "OPEN" ? `${left} open` : s.status}</td>
+                              <td className={s.status === "OPEN" ? "text-emerald-600" : s.status === "FULL" ? "text-red-600" : "text-warn-ink"}>{s.status === "OPEN" ? `${left} open` : s.status}</td>
                             </tr>
                           );
                         })}

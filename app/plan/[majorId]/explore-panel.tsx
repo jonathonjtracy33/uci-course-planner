@@ -14,8 +14,9 @@ const numeral = (code: string) => GE_CATEGORIES.find((c) => c.code === code)?.nu
 
 // Browse every undergraduate course for one quarter, with "Ready for me" on by default so a
 // student only sees classes they can actually take then.
-export function ExplorePanel({ quarters, courses, progress, studentBefore, standingIn, owned, liveTerm, onAdd, onShowCourse }: {
+export function ExplorePanel({ quarters, courses, progress, studentBefore, standingIn, owned, liveTerm, lowerDivisionFirst, onAdd, onShowCourse }: {
   liveTerm: string | null; // newest quarter on UCI's Schedule of Classes
+  lowerDivisionFirst: boolean; // years 1-2: start with "Lower-division only" checked
   quarters: { index: number; label: string; season: Season; units: number }[];
   courses: GeCourses | null;
   progress: GeProgress;
@@ -26,7 +27,7 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
   onShowCourse: (id: string, quarter: number) => void;
 }) {
   const [quarter, setQuarter] = useState(quarters[0]?.index ?? 0);
-  const [filters, setFilters] = useState<ExploreFilters>({ kind: "all", geCategory: null, readyOnly: true, lowerDivisionOnly: false, noPriority: false, query: "" });
+  const [filters, setFilters] = useState<ExploreFilters>({ kind: "all", geCategory: null, readyOnly: true, lowerDivisionOnly: lowerDivisionFirst, noPriority: false, query: "" });
   const [shown, setShown] = useState(PAGE);
   const [added, setAdded] = useState<string | null>(null);
   const q = quarters.find((x) => x.index === quarter) ?? quarters[0];
@@ -62,7 +63,7 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="text-xs font-medium text-muted">
             For which quarter?
-            <select value={quarter} onChange={(e) => { setQuarter(Number(e.target.value)); setShown(PAGE); }} className="mt-1 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground">
+            <select value={quarter} onChange={(e) => { setQuarter(Number(e.target.value)); setShown(PAGE); }} className="mt-1 w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm text-foreground">
               {quarters.map((x) => <option key={x.index} value={x.index}>{x.label} · {x.units} units planned</option>)}
             </select>
           </label>
@@ -74,7 +75,7 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
                 const v = e.target.value;
                 set(v.startsWith("GE-") ? { kind: "ge", geCategory: v } : { kind: v as ExploreFilters["kind"], geCategory: null });
               }}
-              className="mt-1 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground"
+              className="mt-1 w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm text-foreground"
             >
               <option value="all">All courses</option>
               <option value="ge">GE courses</option>
@@ -89,7 +90,7 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
           </label>
           <label className="text-xs font-medium text-muted">
             Search
-            <input type="search" value={filters.query} onChange={(e) => set({ query: e.target.value })} placeholder="e.g. psychology, MUSIC 14" className="mt-1 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground" />
+            <input type="search" value={filters.query} onChange={(e) => set({ query: e.target.value })} placeholder="e.g. psychology, MUSIC 14" className="mt-1 w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm text-foreground" />
           </label>
         </div>
 
@@ -100,7 +101,7 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
         </div>
       </div>
 
-      <p className={`mx-4 mt-3 rounded-lg px-3 py-2 text-xs ${scheduleTerm ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200" : "bg-background text-muted"}`}>
+      <p className={`mx-4 mt-3 rounded-lg px-3 py-2 text-xs ${scheduleTerm ? "bg-emerald-500/10 text-emerald-800" : "bg-subtle text-muted"}`}>
         {scheduleTerm
           ? <>Live from UCI&apos;s {scheduleTerm} Schedule of Classes: only courses actually being offered, with open seats. Updated daily.</>
           : <>UCI hasn&apos;t posted the {q?.label} Schedule of Classes yet (it usually comes out about 6 weeks before the quarter), so these are courses UCI usually offers in {q?.season}.{liveTerm && ` The newest posted schedule is ${liveTerm}.`}</>}

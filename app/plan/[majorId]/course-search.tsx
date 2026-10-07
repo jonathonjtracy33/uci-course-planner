@@ -46,7 +46,7 @@ export function CourseSearch({ index, onFocus, onPick, placeholder }: {
         aria-controls={listId}
         aria-autocomplete="list"
         aria-label="Search all UCI courses"
-        className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+        className="w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
         value={query}
         placeholder={placeholder}
         onFocus={() => { onFocus(); setOpen(true); }}

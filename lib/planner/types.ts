@@ -15,8 +15,32 @@ export type CatalogCourse = {
 
 export type Catalog = Map<string, CatalogCourse>;
 
-export type Season = "Fall" | "Winter" | "Spring";
-export const SEASONS: Season[] = ["Fall", "Winter", "Spring"];
+export type Season = "Fall" | "Winter" | "Spring" | "Summer";
+export const SEASONS: Season[] = ["Fall", "Winter", "Spring"]; // the regular academic year
+
+// One letter per season for compact offering patterns ("FWS"). Summer is "U" so it doesn't clash with Spring.
+export const SEASON_LETTER: Record<Season, string> = { Fall: "F", Winter: "W", Spring: "S", Summer: "U" };
+
+// Quarter indexes count from the student's first Fall: 0 Fall, 1 Winter, 2 Spring of year 1, 3 Fall
+// of year 2, and so on. A summer sits between Spring and the next Fall, so it gets a half index
+// (2.5 = the summer after year 1).
+export function termAt(index: number, startYear: number) {
+  const summer = !Number.isInteger(index);
+  const season: Season = summer ? "Summer" : SEASONS[index % 3];
+  const year = startYear + Math.floor(index / 3) + (season === "Fall" ? 0 : 1);
+  return { index, season, year, label: `${season} ${year}` };
+}
+
+// Every term from `first` up to (not including) `end`, with summers after each Spring if wanted.
+export function termIndexes(first: number, end: number, summers: boolean): number[] {
+  const out: number[] = [];
+  for (let q = Math.ceil(first); q < end; q++) {
+    out.push(q);
+    if (summers && q % 3 === 2 && q + 0.5 < end) out.push(q + 0.5);
+  }
+  if (!Number.isInteger(first)) out.unshift(first); // planning starts in a summer
+  return out;
+}
 
 export type PlanOptions = {
   startYear: number; // calendar year of the student's first Fall at UCI
@@ -27,6 +51,8 @@ export type PlanOptions = {
   reserved?: Record<number, number>; // units per quarter index already used by courses the student added
   balance?: boolean; // spread major courses evenly to leave room for GEs; default true
   quarters?: number; // graduate within this many quarters of starting, default 12 (4 years)
+  summers?: boolean; // also plan summer sessions (for graduating early)
+  summerUnits?: number; // unit limit for a summer (two sessions), default 12
   maxQuarters?: number; // hard stop when a plan overflows, default 18
   offeredSince?: number; // only trust offerings from this year on; default startYear - 4
 };

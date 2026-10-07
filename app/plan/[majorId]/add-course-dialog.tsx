@@ -5,12 +5,13 @@ import type { IndexCourse } from "@/lib/course-index";
 import { catalogueUrl } from "@/lib/links";
 import { searchCourses } from "./course-search";
 import type { CourseIndex } from "./use-course-index";
+import { SEASON_LETTER, type Season } from "@/lib/planner/types";
 
 const MINORS_URL = "https://catalogue.uci.edu/undergraduatedegrees/";
 
 // Add any UCI course to a quarter: an elective, a minor course, or something to explore.
 export function AddCourseDialog({ quarter, index, exclude, onAdd, onShowCourse, onClose }: {
-  quarter: { label: string; season: "Fall" | "Winter" | "Spring" };
+  quarter: { label: string; season: Season };
   index: CourseIndex | null;
   exclude: Set<string>;
   onAdd: (id: string) => void;
@@ -24,7 +25,7 @@ export function AddCourseDialog({ quarter, index, exclude, onAdd, onShowCourse, 
     dialog.current?.showModal();
   }, []);
 
-  const offered = (c: IndexCourse) => c.seasons === "*" || c.seasons.includes(quarter.season[0]);
+  const offered = (c: IndexCourse) => c.seasons === "*" || c.seasons.includes(SEASON_LETTER[quarter.season]);
   const results = index ? searchCourses([...index.values()].filter((c) => !exclude.has(c.id)), query, 25) : [];
 
   return (
@@ -54,7 +55,7 @@ export function AddCourseDialog({ quarter, index, exclude, onAdd, onShowCourse, 
             placeholder="Search by code or title, e.g. MUSIC 14 or photography"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="mt-3 w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+            className="mt-3 w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
           />
         </header>
         <ul className="flex-1 divide-y divide-border overflow-y-auto">
@@ -72,7 +73,7 @@ export function AddCourseDialog({ quarter, index, exclude, onAdd, onShowCourse, 
                   {c.seasons === "" ? " · not offered recently" : !offered(c) ? ` · not usually offered in ${quarter.season}` : ""}
                 </p>
                 {c.hasPrereqs && (
-                  <button type="button" onClick={() => onShowCourse(c.id)} className="mt-0.5 text-xs text-red-600 underline underline-offset-2 dark:text-red-400">
+                  <button type="button" onClick={() => onShowCourse(c.id)} className="mt-0.5 text-xs text-red-600 underline underline-offset-2">
                     Has prerequisites: see what it requires
                   </button>
                 )}

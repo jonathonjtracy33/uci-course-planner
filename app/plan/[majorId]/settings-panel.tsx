@@ -14,7 +14,7 @@ const quarterLabel = (entryYear: number, q: number) => {
   return `${season} ${entryYear + Math.floor(q / 3) + (season === "Fall" ? 0 : 1)}`;
 };
 
-const field = "w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
+const field = "w-full rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, index, onSearchFocus, apExams, onReset }: {
   settings: PlanSettings;
@@ -132,7 +132,7 @@ function Chips({ items, onRemove, empty }: { items: { key: string; label: string
       {items.map((i) => (
         <li key={i.key} className="flex items-center gap-1 rounded-full bg-brand-soft py-0.5 pl-2.5 pr-1 text-xs">
           <span className="font-mono">{i.label}</span>
-          <button type="button" onClick={() => onRemove(i.key)} aria-label={`Remove ${i.label}`} className="grid size-5 place-items-center rounded-full text-muted hover:bg-background hover:text-foreground">×</button>
+          <button type="button" onClick={() => onRemove(i.key)} aria-label={`Remove ${i.label}`} className="grid size-5 place-items-center rounded-full text-muted hover:bg-subtle hover:text-foreground">×</button>
         </li>
       ))}
     </ul>

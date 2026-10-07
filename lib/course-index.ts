@@ -1,3 +1,5 @@
+import { SEASON_LETTER, type Season } from "./planner/types";
+
 // A compact list of every UCI course, for searching courses taken and picking GEs.
 // Sent as arrays rather than objects to keep it small (~9,300 courses).
 
@@ -19,4 +21,4 @@ export const encodeCourse = (c: IndexCourse): IndexRow => [c.id, c.code, c.title
 export const decodeCourse = ([id, code, title, units, ge, seasons, hasPrereqs, number]: IndexRow): IndexCourse =>
   ({ id, code, title, units, ge: ge ? ge.split(",") : [], seasons, hasPrereqs: hasPrereqs === 1, number });
 
-export const offeredIn = (c: IndexCourse, season: "Fall" | "Winter" | "Spring") => c.seasons === "*" || c.seasons.includes(season[0]);
+export const offeredIn = (c: IndexCourse, season: Season) => c.seasons === "*" || c.seasons.includes(SEASON_LETTER[season]);

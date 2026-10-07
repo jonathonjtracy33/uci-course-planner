@@ -9,6 +9,7 @@ import { buildPlan, type CatalogCourse } from "@/lib/planner";
 import type { ApExam } from "@/lib/planner/ap";
 import { normalizeCourseId } from "@/lib/planner/prereqs";
 import { offeredSeasons } from "@/lib/planner/schedule";
+import { SEASON_LETTER } from "@/lib/planner/types";
 
 export type MajorSummary = { id: string; name: string; degreeType: string | null };
 
@@ -136,7 +137,7 @@ export async function getCourseIndex(): Promise<IndexRow[]> {
       title: r.title,
       units: r.minUnits > 0 ? r.minUnits : r.maxUnits,
       ge: r.ge,
-      seasons: seasons ? [...seasons].map((s) => s[0]).join("") : recent ? "*" : "",
+      seasons: seasons ? [...seasons].map((s) => SEASON_LETTER[s]).join("") : recent ? "*" : "",
       hasPrereqs: r.prerequisiteTree !== null,
       number: parseInt(r.courseNumber, 10) || 0,
     });
@@ -174,7 +175,7 @@ function toCandidates(rows: CandidateRow[], offeredSince: number, live: Map<stri
         title: r.title,
         units: r.minUnits > 0 ? r.minUnits : r.maxUnits,
         ge: r.ge,
-        seasons: seasons ? [...seasons].map((s) => s[0]).join("") : "*",
+        seasons: seasons ? [...seasons].map((s) => SEASON_LETTER[s]).join("") : "*",
         number: parseInt(r.courseNumber.replace(/^[A-Z]+/, ""), 10) || 0,
         prerequisiteTree: r.prerequisiteTree,
         prerequisiteText: r.prerequisiteText || null,

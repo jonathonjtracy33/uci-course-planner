@@ -14,7 +14,7 @@ export function UnitsDoneInput({ value, onChange }: { value: number; onChange: (
         value={value || ""}
         placeholder="e.g. 48"
         onChange={(e) => onChange(Math.max(0, Math.min(400, Math.round(Number(e.target.value) || 0))))}
-        className="mt-1 block w-32 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+        className="mt-1 block w-32 rounded-lg border border-border bg-subtle px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
       />
     </label>
   );

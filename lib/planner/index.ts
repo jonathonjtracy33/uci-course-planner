@@ -6,7 +6,7 @@ import type { Requirement } from "@/db/schema";
 import { resolveTree, type PrereqContext } from "./prereqs";
 import { schedule } from "./schedule";
 import { selectCourses, unitsOf } from "./select";
-import type { Catalog, Plan, PlanOptions, PlannedItem } from "./types";
+import { termAt, type Catalog, type Plan, type PlanOptions, type PlannedItem } from "./types";
 
 export * from "./types";
 
@@ -61,6 +61,8 @@ export function buildPlan(requirements: Requirement[], catalog: Catalog, options
     firstQuarter,
     maxUnitsPerQuarter: cap,
     reserved: options.reserved ?? {},
+    summers: options.summers ?? false,
+    summerUnits: options.summerUnits ?? 12,
     quarters,
     maxQuarters: options.maxQuarters ?? 18,
     offeredSince: options.offeredSince ?? options.startYear - 4,
@@ -86,7 +88,10 @@ export function buildPlan(requirements: Requirement[], catalog: Catalog, options
   const warnings = [...selection.warnings];
   if (requirements.length === 0) warnings.push("UCI's catalog data doesn't list any requirements for this major yet.");
   const last = scheduled.at(-1);
-  if (last && last.index >= quarters) warnings.push(`This plan runs to ${last.label}, past ${quarters / 3} years. Adding AP credit or courses you've already taken, or raising the unit limit, may shorten it.`);
+  if (last && last.index >= quarters) {
+    const goal = termAt(quarters - 1, options.startYear).label;
+    warnings.push(`This plan runs to ${last.label}, past your goal of graduating ${goal}. Adding AP credit or courses you've already taken, raising the unit limit, or adding summer classes may shorten it.`);
+  }
   if (unscheduled.length) warnings.push(`${unscheduled.length} course(s) couldn't be scheduled.`);
   return { quarters: scheduled, majorUnitsPerQuarter: cap, unscheduled, warnings };
 }

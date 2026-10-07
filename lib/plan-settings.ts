@@ -12,9 +12,15 @@ export type PlanSettings = {
   fill: boolean; // fill the rest of the 180 units with free-elective slots
   setup: number; // guided setup step being shown on the plan page (0 = none)
   unitsDone: number; // total units completed so far, as the student reports it (0 = count from courses)
+  grad: number; // graduate after this many quarters from the first Fall: 12 = on time, 9 = a year early, 15 = a year later
+  summer: boolean; // plan summer sessions too (for graduating early)
+  sections: string[]; // 5-digit section codes chosen for the calendar
 };
 
-export const SETUP_STEPS = { courses: 3, ap: 4 } as const;
+// The questionnaire: steps 1-4 (college, year, quarter, major) are on /start; the rest on the plan page.
+export const SETUP_STEPS = { ap: 5, courses: 6, graduation: 7 } as const;
+export const TOTAL_STEPS = 7;
+export const ON_TIME = 12;
 const SEASONS = ["Fall", "Winter", "Spring"] as const;
 
 // "I'm going into my 2nd year, starting Winter 2027" -> first Fall at UCI and the quarter to plan from.
@@ -26,7 +32,7 @@ export function fromStanding(yearInCollege: number, startFallYear: number, start
 export const UNIT_CHOICES = [12, 13, 14, 15, 16, 17, 18, 19, 20];
 export const DEFAULT_MAX_UNITS = 16;
 
-export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, added: [], fill: false, setup: 0, unitsDone: 0 });
+export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, added: [], fill: false, setup: 0, unitsDone: 0, grad: ON_TIME, summer: false, sections: [] });
 
 const int = (value: string | null, fallback: number, min: number, max: number) => {
   const n = Number(value);
@@ -50,11 +56,15 @@ export function parseSettings(search: string, defaultEntryYear: number): PlanSet
     added: (params.get("add") ?? params.get("ge") ?? "").split(",").flatMap((entry) => { // "ge" is the older name
       const [id, quarter] = entry.split("@");
       const q = Number(quarter);
-      return id && Number.isInteger(q) && q >= 0 && q < 18 ? [{ id, quarter: q }] : [];
+      // whole quarters, or .5 for a summer
+      return id && Number.isInteger(q * 2) && q >= 0 && q < 18 ? [{ id, quarter: q }] : [];
     }),
     fill: params.get("fill") === "1",
     setup: int(params.get("setup"), 0, 0, 9),
     unitsDone: int(params.get("done"), 0, 0, 400),
+    grad: int(params.get("grad"), ON_TIME, 6, 18),
+    summer: params.get("summer") === "1",
+    sections: (params.get("sec") ?? "").split(",").filter((c) => /^\d{5}$/.test(c)),
   };
 }
 
@@ -70,6 +80,9 @@ export function serializeSettings(s: PlanSettings, defaultEntryYear: number): st
   if (s.fill) params.set("fill", "1");
   if (s.setup) params.set("setup", String(s.setup));
   if (s.unitsDone) params.set("done", String(s.unitsDone));
+  if (s.grad !== ON_TIME) params.set("grad", String(s.grad));
+  if (s.summer) params.set("summer", "1");
+  if (s.sections.length) params.set("sec", s.sections.join(","));
   const query = params.toString();
   return query ? `?${query}` : "";
 }

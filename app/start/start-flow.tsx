@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { MajorSearch } from "@/app/components/major-search";
 import type { MajorSummary } from "@/lib/data";
-import { fromStanding, SETUP_STEPS } from "@/lib/plan-settings";
+import { fromStanding, SETUP_STEPS, TOTAL_STEPS } from "@/lib/plan-settings";
 
 const SEASONS = ["Fall", "Winter", "Spring"] as const;
 type Season = (typeof SEASONS)[number];
@@ -36,7 +36,8 @@ const noSubscribe = () => () => {};
 export function StartFlow({ majors }: { majors: MajorSummary[] }) {
   const [standing, setStanding] = useState<(typeof STANDINGS)[number] | null>(null);
   const [termIndex, setTermIndex] = useState(0);
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [college, setCollege] = useState<string | null>(null);
   // Dates come from the browser so the choices are right whenever the page is opened.
   const now = useSyncExternalStore(noSubscribe, () => new Date().toDateString(), () => null);
   const terms = now ? upcomingTerms(new Date(now)) : [];
@@ -45,7 +46,7 @@ export function StartFlow({ majors }: { majors: MajorSummary[] }) {
   const query = standing && term
     ? (() => {
         const { entryYear, firstQuarter } = fromStanding(standing.year, term.startFallYear, term.season);
-        const params = new URLSearchParams({ entry: String(entryYear), setup: String(standing.year === 1 && firstQuarter === 0 ? SETUP_STEPS.ap : SETUP_STEPS.courses) });
+        const params = new URLSearchParams({ entry: String(entryYear), setup: String(SETUP_STEPS.ap) });
         if (firstQuarter) params.set("from", String(firstQuarter));
         return `?${params}`;
       })()
@@ -53,13 +54,40 @@ export function StartFlow({ majors }: { majors: MajorSummary[] }) {
 
   return (
     <div>
-      <p className="text-sm font-medium text-brand">Step {step} of 4</p>
+      <p className="text-sm font-medium text-brand">Step {step} of {TOTAL_STEPS}</p>
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-border" aria-hidden>
-        <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${step * 25}%` }} />
+        <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
       </div>
 
       {step === 1 && (
+        <section aria-labelledby="college-q" className="mt-8">
+          <h1 id="college-q" className="text-2xl font-semibold tracking-tight sm:text-3xl">Which college are you going to, or attending now?</h1>
+          <p className="mt-2 text-muted">DegreePath uses each school&apos;s own catalog, requirements and class schedule.</p>
+          <div className="mt-6 grid gap-2" role="radiogroup" aria-label="College">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={college === "uci"}
+              onClick={() => setCollege("uci")}
+              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left ${college === "uci" ? "border-brand bg-brand-soft ring-2 ring-brand/30" : "border-border bg-surface hover:border-brand"}`}
+            >
+              <span>
+                <span className="block font-medium">University of California, Irvine</span>
+                <span className="block text-sm text-muted">UCI · 2026–27 catalog, live class schedule</span>
+              </span>
+              {college === "uci" && <span aria-hidden className="text-brand">✓</span>}
+            </button>
+            <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted">More colleges are coming soon.</p>
+          </div>
+          <button type="button" disabled={!college} onClick={() => setStep(2)} className="mt-8 w-full rounded-xl bg-brand px-4 py-3 font-medium text-white hover:brightness-110 disabled:opacity-40 sm:w-auto">
+            Next: your year →
+          </button>
+        </section>
+      )}
+
+      {step === 2 && (
         <section aria-labelledby="standing-q" className="mt-8">
+          <button type="button" onClick={() => setStep(1)} className="text-sm text-muted hover:text-brand">← Back</button>
           <h1 id="standing-q" className="text-2xl font-semibold tracking-tight sm:text-3xl">Which year of college are you going into?</h1>
           <p className="mt-2 text-muted">This sets where your plan starts. Already at UCI? You&apos;ll add the classes you&apos;ve finished next.</p>
 
@@ -85,11 +113,20 @@ export function StartFlow({ majors }: { majors: MajorSummary[] }) {
             </p>
           )}
 
-          {standing && terms.length > 0 && (
-            <div className="mt-6">
-              <h2 className="font-medium">Which quarter are you planning from?</h2>
-              <p className="text-sm text-muted">Usually the next quarter you&apos;ll sign up for.</p>
-              <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Starting quarter">
+          <button type="button" disabled={!standing} onClick={() => setStep(3)} className="mt-8 w-full rounded-xl bg-brand px-4 py-3 font-medium text-white hover:brightness-110 disabled:opacity-40 sm:w-auto">
+            Next: your quarter →
+          </button>
+        </section>
+      )}
+
+      {step === 3 && (
+        <section aria-labelledby="quarter-q" className="mt-8">
+          <button type="button" onClick={() => setStep(2)} className="text-sm text-muted hover:text-brand">← Back</button>
+          {terms.length > 0 && (
+            <div className="mt-2">
+              <h1 id="quarter-q" className="text-2xl font-semibold tracking-tight sm:text-3xl">Which quarter are you planning for?</h1>
+              <p className="mt-2 text-muted">Usually the next quarter you&apos;ll sign up for. You&apos;ll get a recommended schedule for it, then a plan all the way to graduation.</p>
+              <div className="mt-6 flex flex-wrap gap-2" role="radiogroup" aria-label="Starting quarter">
                 {terms.map((t, i) => (
                   <button
                     key={t.label}
@@ -106,20 +143,15 @@ export function StartFlow({ majors }: { majors: MajorSummary[] }) {
             </div>
           )}
 
-          <button
-            type="button"
-            disabled={!standing}
-            onClick={() => setStep(2)}
-            className="mt-8 w-full rounded-xl bg-brand px-4 py-3 font-medium text-white hover:brightness-110 disabled:opacity-40 sm:w-auto"
-          >
-            Next: choose your major →
+          <button type="button" onClick={() => setStep(4)} className="mt-8 w-full rounded-xl bg-brand px-4 py-3 font-medium text-white hover:brightness-110 sm:w-auto">
+            Next: your major →
           </button>
         </section>
       )}
 
-      {step === 2 && (
+      {step === 4 && (
         <section aria-labelledby="major-q" className="mt-8">
-          <button type="button" onClick={() => setStep(1)} className="text-sm text-muted hover:text-brand">← Back</button>
+          <button type="button" onClick={() => setStep(3)} className="text-sm text-muted hover:text-brand">← Back</button>
           <h1 id="major-q" className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">What&apos;s your major?</h1>
           <p className="mt-2 text-muted">Not sure yet? Choose Undeclared and you can try majors later without losing anything.</p>
           <div className="mt-6">

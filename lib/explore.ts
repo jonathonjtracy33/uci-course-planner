@@ -5,6 +5,7 @@ import type { GeProgress } from "./ge";
 import { redundant, type GeCandidate } from "./ge-recommend";
 import { courseStatus, type Missing, type StudentState } from "./prereq-status";
 import { checkRestriction, type RestrictionCheck, type Standing } from "./restrictions";
+import { SEASON_LETTER, type Season } from "./planner/types";
 
 export type ExploreFilters = {
   kind: "all" | "ge" | "elective"; // elective = not approved for any GE
@@ -29,7 +30,7 @@ const seatRank = (r: ExploreResult) => (r.onSchedule ? SEATS[r.course.live?.stat
 
 export function exploreCourses(input: {
   courses: readonly GeCandidate[]; // an array, not an iterator: a cached iterator is empty the second time
-  season: "Fall" | "Winter" | "Spring";
+  season: Season;
   student: StudentState;
   standing: Standing;
   owned: Set<string>; // taken, credited, or already planned
@@ -48,7 +49,7 @@ export function exploreCourses(input: {
     if (input.owned.has(course.id)) continue;
     // Once UCI posts the schedule, it's the source of truth; before that, use past offerings.
     const onSchedule = input.scheduleTerm ? course.live?.term === input.scheduleTerm : null;
-    const usually = course.seasons !== "" && (course.seasons === "*" || course.seasons.includes(input.season[0]));
+    const usually = course.seasons !== "" && (course.seasons === "*" || course.seasons.includes(SEASON_LETTER[input.season]));
     if (!(onSchedule ?? usually)) continue;
     if (f.kind === "ge" && !course.ge.length) continue;
     if (f.kind === "elective" && course.ge.length) continue;

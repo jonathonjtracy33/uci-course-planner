@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { parseSettings, serializeSettings, type PlanSettings } from "@/lib/plan-settings";
 
-const CHANGE = "zotpath:settings";
+const CHANGE = "degreepath:settings";
 
 function subscribe(onChange: () => void) {
   window.addEventListener("popstate", onChange);

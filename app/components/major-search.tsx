@@ -50,7 +50,7 @@ export function MajorSearch({ majors, query: carry = "", showUndeclared = true }
           <li key={m.id}>
             <Link href={`/plan/${m.id}${carry}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-brand-soft focus-visible:bg-brand-soft focus-visible:outline-none">
               <span>{shortName(m.name)}</span>
-              {m.degreeType && <span className="shrink-0 rounded bg-background px-2 py-0.5 font-mono text-xs text-muted">{m.degreeType}</span>}
+              {m.degreeType && <span className="shrink-0 rounded bg-subtle px-2 py-0.5 font-mono text-xs text-muted">{m.degreeType}</span>}
             </Link>
           </li>
         ))}

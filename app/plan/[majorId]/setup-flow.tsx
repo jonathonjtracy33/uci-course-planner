@@ -2,7 +2,8 @@
 
 import type { ApExam, CourseGrant } from "@/lib/planner/ap";
 import type { PlannedItem } from "@/lib/planner";
-import { SETUP_STEPS, type PlanSettings } from "@/lib/plan-settings";
+import { ON_TIME, SETUP_STEPS, TOTAL_STEPS, type PlanSettings } from "@/lib/plan-settings";
+import { termAt } from "@/lib/planner/types";
 import { CourseSearch } from "./course-search";
 import { UnitsDoneInput } from "./units-done-input";
 import type { CourseFacts } from "./plan-view";
@@ -73,15 +74,22 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
 
   return (
     <section className="rounded-2xl border border-brand/40 bg-surface p-5 shadow-sm sm:p-6" aria-labelledby="setup-title">
-      <p className="text-sm font-medium text-brand">Step {step} of 4</p>
+      <p className="text-sm font-medium text-brand">Step {step} of {TOTAL_STEPS}</p>
       <div className="mt-2 h-1 overflow-hidden rounded-full bg-border" aria-hidden>
-        <div className="h-full rounded-full bg-brand" style={{ width: `${step * 25}%` }} />
+        <div className="h-full rounded-full bg-brand" style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
       </div>
 
       {step === SETUP_STEPS.courses && (
         <>
-          <h2 id="setup-title" className="mt-6 text-xl font-semibold tracking-tight sm:text-2xl">Which UCI courses have you already finished?</h2>
-          <p className="mt-1 text-sm text-muted">
+          <h2 id="setup-title" className="mt-6 text-xl font-semibold tracking-tight sm:text-2xl">Which courses have you already finished?</h2>
+          <label className="mt-4 block text-sm font-medium">
+            Where did you take them?
+            <select defaultValue="uci" className="mt-1 block w-full max-w-sm rounded-lg border border-border bg-subtle px-2.5 py-2 text-sm">
+              <option value="uci">UC Irvine</option>
+              <option disabled>More colleges coming soon</option>
+            </select>
+          </label>
+          <p className="mt-3 text-sm text-muted">
             Check everything you&apos;ve passed. Checking a course also checks the courses it requires. Haven&apos;t taken any yet? Just press Next.
           </p>
 
@@ -112,7 +120,7 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
                 {extraTaken.map((id) => (
                   <li key={id} className="flex items-center gap-1 rounded-full bg-brand-soft py-0.5 pl-2.5 pr-1 text-xs">
                     <span className="font-mono">{codeOf(id)}</span>
-                    <button type="button" onClick={() => update({ taken: settings.taken.filter((t) => t !== id) })} aria-label={`Remove ${codeOf(id)}`} className="grid size-5 place-items-center rounded-full text-muted hover:bg-background">×</button>
+                    <button type="button" onClick={() => update({ taken: settings.taken.filter((t) => t !== id) })} aria-label={`Remove ${codeOf(id)}`} className="grid size-5 place-items-center rounded-full text-muted hover:bg-subtle">×</button>
                   </li>
                 ))}
               </ul>
@@ -120,16 +128,16 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
           </div>
 
           {settings.firstQuarter > 0 && (
-            <div className="mt-6 rounded-lg bg-background p-3">
+            <div className="mt-6 rounded-lg bg-subtle p-3">
               <UnitsDoneInput value={settings.unitsDone} onChange={(units) => update({ unitsDone: units })} />
               <p className="mt-1 text-xs text-muted">Easier than checking every GE and elective you&apos;ve taken. Used to work out how many units you still need.</p>
             </div>
           )}
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-            <button type="button" onClick={done} className="text-sm text-muted hover:text-brand">Skip setup</button>
-            <button type="button" onClick={() => update({ setup: SETUP_STEPS.ap })} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
-              Next: AP scores →
+            <button type="button" onClick={() => update({ setup: SETUP_STEPS.ap })} className="text-sm text-muted hover:text-brand">← Back</button>
+            <button type="button" onClick={() => update({ setup: SETUP_STEPS.graduation })} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
+              Next: graduation →
             </button>
           </div>
         </>
@@ -159,7 +167,7 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
                       else delete next[exam.name];
                       update({ ap: next });
                     }}
-                    className="rounded-lg border border-border bg-background px-2 py-1 text-sm sm:w-32"
+                    className="rounded-lg border border-border bg-subtle px-2 py-1 text-sm sm:w-32"
                   >
                     <option value="">Didn&apos;t take</option>
                     {[5, 4, 3, 2, 1].map((s) => <option key={s} value={s}>Score {s}</option>)}
@@ -169,13 +177,79 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
             })}
           </ul>
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-            <button type="button" onClick={() => update({ setup: SETUP_STEPS.courses })} className="text-sm text-muted hover:text-brand">← Back</button>
-            <button type="button" onClick={done} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
-              See my plan →
+            <span />
+            <button type="button" onClick={() => update({ setup: SETUP_STEPS.courses })} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
+              Next: courses you&apos;ve taken →
             </button>
           </div>
         </>
       )}
+
+      {step === SETUP_STEPS.graduation && <GraduationStep settings={settings} update={update} onDone={done} />}
     </section>
+  );
+}
+
+// When to graduate: on time (end of year 4), early with summer classes, or later with lighter
+// quarters. The only question with a Skip button: skipping means on time.
+function GraduationStep({ settings, update, onDone }: { settings: PlanSettings; update: (c: Partial<PlanSettings>) => void; onDone: () => void }) {
+  const label = (grad: number) => termAt(grad - 1, settings.entryYear).label; // the last quarter
+  const left = (grad: number) => grad - settings.firstQuarter;
+  const choice = settings.grad < ON_TIME ? "early" : settings.grad > ON_TIME ? "longer" : "on-time";
+  const early = [11, 10, 9].filter((g) => left(g) >= 2);
+  const option = (key: string, title: string, detail: string, onPick: () => void) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={choice === key}
+      onClick={onPick}
+      className={`rounded-xl border px-4 py-3 text-left ${choice === key ? "border-brand bg-brand-soft ring-2 ring-brand/30" : "border-border bg-surface hover:border-brand"}`}
+    >
+      <span className="block font-medium">{title}</span>
+      <span className="block text-sm text-muted">{detail}</span>
+    </button>
+  );
+  const sub = (options: number[], extra: (g: number) => string) => (
+    <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Graduation quarter">
+      {options.map((g) => (
+        <button
+          key={g}
+          type="button"
+          role="radio"
+          aria-checked={settings.grad === g}
+          onClick={() => update({ grad: g, summer: g < ON_TIME })}
+          className={`rounded-full border px-4 py-1.5 text-sm ${settings.grad === g ? "border-brand bg-brand text-white" : "border-border bg-surface hover:border-brand"}`}
+        >
+          {label(g)} <span className="opacity-80">· {extra(g)}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <>
+      <h2 id="setup-title" className="mt-6 text-xl font-semibold tracking-tight sm:text-2xl">When do you want to graduate?</h2>
+      <p className="mt-1 text-sm text-muted">This sets how many classes go in each quarter. You can change it any time.</p>
+      <div className="mt-5 grid gap-2" role="radiogroup" aria-label="Graduation goal">
+        {option("on-time", "On time", `Graduate ${label(ON_TIME)}: ${left(ON_TIME)} quarters from now, a normal load each quarter.`, () => update({ grad: ON_TIME, summer: false }))}
+        {early.length > 0 && option("early", "Early, with summer classes", "Heavier quarters plus summer sessions, so you finish sooner.", () => update({ grad: early[0], summer: true }))}
+        {option("longer", "Taking longer is fine", "Lighter quarters, more time for work, research or a minor.", () => update({ grad: 15, summer: false }))}
+      </div>
+      {choice === "early" && sub(early, (g) => (ON_TIME - g === 3 ? "a year early" : `${ON_TIME - g} quarter${ON_TIME - g === 1 ? "" : "s"} early`))}
+      {choice === "longer" && sub([13, 14, 15], (g) => (g - ON_TIME === 3 ? "one extra year" : `${g - ON_TIME} extra quarter${g - ON_TIME === 1 ? "" : "s"}`))}
+      {choice === "early" && <p className="mt-3 text-xs text-muted">Summer sessions are added to your plan with courses UCI actually offers in summer. Check the warnings on your plan: some majors can&apos;t finish early.</p>}
+
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+        <button type="button" onClick={() => update({ setup: SETUP_STEPS.courses })} className="text-sm text-muted hover:text-brand">← Back</button>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => { update({ grad: ON_TIME, summer: false }); onDone(); }} className="rounded-xl px-4 py-2.5 text-sm text-muted hover:text-foreground">
+            Skip
+          </button>
+          <button type="button" onClick={onDone} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
+            See my plan →
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
