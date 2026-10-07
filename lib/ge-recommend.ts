@@ -19,7 +19,11 @@ export type GeCandidate = {
   prerequisiteText: string | null;
   restriction: string | null;
   overlaps: string[]; // can't also get credit for these
+  live?: LiveSummary; // on the newest published Schedule of Classes
 };
+
+// A course on the newest published Schedule of Classes.
+export type LiveSummary = { term: string /* "Fall 2026" */; status: string; seatsLeft: number; sections: number };
 
 export type Recommendation = {
   course: GeCandidate;

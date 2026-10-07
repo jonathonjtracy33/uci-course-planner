@@ -51,6 +51,19 @@ describe("Course Explorer", () => {
     expect(ids(exploreCourses({ ...base, courses, filters: { ...filters, query: "math 2" } }))).toEqual(["MATH2D", "MATH192"]);
   });
 
+  it("uses the posted Schedule of Classes over past offerings once it exists", () => {
+    const live = { term: "2026 Fall", status: "OPEN", seatsLeft: 30, sections: 2 };
+    const courses = [c("ON", { live }), c("NOTON"), c("NEWLY", { seasons: "S", live })];
+    expect(ids(exploreCourses({ ...base, courses, scheduleTerm: "2026 Fall" })).sort()).toEqual(["NEWLY", "ON"]);
+    expect(ids(exploreCourses({ ...base, courses, scheduleTerm: null })).sort()).toEqual(["NOTON", "ON"]);
+  });
+
+  it("lists open classes before full ones on a posted schedule", () => {
+    const at = (status: string) => ({ term: "2026 Fall", status, seatsLeft: status === "FULL" ? 0 : 5, sections: 1 });
+    const courses = [c("AFULL", { live: at("FULL") }), c("BOPEN", { live: at("OPEN") }), c("CWAIT", { live: at("Waitl") })];
+    expect(ids(exploreCourses({ ...base, courses, scheduleTerm: "2026 Fall" }))).toEqual(["BOPEN", "CWAIT", "AFULL"]);
+  });
+
   it("hides courses already taken or planned, and ones that overlap them", () => {
     const courses = [c("TAKEN"), c("OVERLAPS", { overlaps: ["TAKEN"] }), c("FRESH")];
     expect(ids(exploreCourses({ ...base, owned: new Set(["TAKEN"]), courses }))).toEqual(["FRESH"]);

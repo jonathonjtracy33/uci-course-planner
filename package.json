@@ -8,9 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
-    "ingest": "tsx --env-file=.env.local scripts/ingest.ts",
-    "plan": "tsx --env-file=.env.local scripts/plan.ts",
-    "test": "vitest run"
+    "ingest": "tsx --env-file-if-exists=.env.local scripts/ingest.ts",
+    "plan": "tsx --env-file-if-exists=.env.local scripts/plan.ts",
+    "test": "vitest run",
+    "ingest:schedule": "tsx --env-file-if-exists=.env.local scripts/ingest-schedule.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

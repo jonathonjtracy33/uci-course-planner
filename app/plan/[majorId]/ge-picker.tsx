@@ -7,13 +7,16 @@ import { catalogueUrl } from "@/lib/links";
 import type { Season } from "@/lib/planner";
 import { courseStatus, type Missing, type StudentState } from "@/lib/prereq-status";
 import { checkRestriction, type RestrictionCheck, type Standing } from "@/lib/restrictions";
+import { LiveBadge } from "./live-badge";
+import { MissingList } from "./missing-list";
 import type { GeCourses } from "./use-course-index";
 
 const LIMIT = 60;
 const numeralOf = (code: string) => (code === "GE-5" ? "V" : GE_CATEGORIES.find((c) => c.code === code)?.numeral ?? code);
 
-export function GePicker({ quarter, category, geCourses, progress, student, standing, openUnits, exclude, onAdd, onShowCourse, onClose }: {
+export function GePicker({ quarter, category, geCourses, progress, student, standing, openUnits, exclude, liveTerm, onAdd, onShowCourse, onClose }: {
   quarter: { label: string; season: Season };
+  liveTerm: string | null;
   category?: string;
   geCourses: GeCourses | null;
   progress: GeProgress;
@@ -40,8 +43,11 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
     dialog.current?.close();
   };
 
+  // Once UCI posts this quarter's Schedule of Classes, only suggest courses that are on it.
+  const scheduleTerm = liveTerm === quarter.label ? liveTerm : null;
+  const pool = geCourses ? [...geCourses.values()].filter((c) => !scheduleTerm || c.live?.term === scheduleTerm) : [];
   const recommendations = mode === "recommend" && geCourses
-    ? recommendGes({ candidates: [...geCourses.values()], progress, season: quarter.season, student, standing, exclude, openUnits })
+    ? recommendGes({ candidates: scheduleTerm ? pool.map((c) => ({ ...c, seasons: "*" })) : pool, progress, season: quarter.season, student, standing, exclude, openUnits })
     : [];
 
   const owned = new Set([...exclude, ...student.have]);
@@ -49,8 +55,8 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
   const rank = (id: string) => (usual.includes(id) ? usual.indexOf(id) : usual.length);
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const matches = geCourses && mode === "browse"
-    ? [...geCourses.values()]
-        .filter((c) => c.ge.includes(selected) && (c.seasons === "*" || c.seasons.includes(quarter.season[0])) && !exclude.has(c.id) && !redundant(c, owned))
+    ? pool
+        .filter((c) => c.ge.includes(selected) && (scheduleTerm || c.seasons === "*" || c.seasons.includes(quarter.season[0])) && !exclude.has(c.id) && !redundant(c, owned))
         .filter((c) => words.every((w) => `${c.code} ${c.title}`.toLowerCase().includes(w)))
         .map((c) => ({ c, status: courseStatus(c, student), restriction: checkRestriction(c.restriction, standing) }))
         // the catalogue's standard choices first, then courses the student can take now, then
@@ -79,7 +85,10 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
             <div>
               <h2 id="ge-picker-title" className="text-base font-semibold">Add a GE to {quarter.label}</h2>
               <p className="mt-0.5 text-xs text-muted">
-                Approved GE courses UCI has offered in {quarter.season} recently. Click a course name for its UCI catalogue page.{" "}
+                {scheduleTerm
+                  ? <>Approved GE courses on UCI&apos;s {quarter.label} Schedule of Classes, with live seats. </>
+                  : <>Approved GE courses UCI has offered in {quarter.season} recently. </>}
+                Click a course name for its UCI catalogue page.{" "}
                 <a href={GE_CATALOGUE_URL} target="_blank" rel="noreferrer" className="text-brand underline">UCI GE requirements ↗</a>
               </p>
             </div>
@@ -143,14 +152,14 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
             <li className="p-4 text-sm text-muted">Every GE category is covered by courses you&apos;ve taken or planned. 🎉</li>
           )}
           {recommendations.map((r: Recommendation) => (
-            <GeRow key={r.course.id} course={r.course} hasTree={!!r.course.prerequisiteTree || !!r.course.prerequisiteText} missing={r.missing} restriction={r.restriction} reasons={r.reasons} highlight={r.fills} onAdd={add} onShowCourse={onShowCourse} />
+            <GeRow key={r.course.id} course={geCourses?.get(r.course.id) ?? r.course} hasTree={!!r.course.prerequisiteTree || !!r.course.prerequisiteText} missing={r.missing} restriction={r.restriction} reasons={r.reasons} highlight={r.fills} scheduleTerm={scheduleTerm} onAdd={add} onShowCourse={onShowCourse} />
           ))}
 
           {mode === "browse" && geCourses && matches.length === 0 && (
             <li className="p-4 text-sm text-muted">No {category_.numeral} courses offered in {quarter.season} match.</li>
           )}
           {matches.slice(0, LIMIT).map(({ c, status, restriction }) => (
-            <GeRow key={c.id} course={c} hasTree={!!c.prerequisiteTree || !!c.prerequisiteText} missing={status.missing} restriction={restriction} onAdd={add} onShowCourse={onShowCourse} />
+            <GeRow key={c.id} course={c} hasTree={!!c.prerequisiteTree || !!c.prerequisiteText} missing={status.missing} restriction={restriction} scheduleTerm={scheduleTerm} onAdd={add} onShowCourse={onShowCourse} />
           ))}
           {matches.length > LIMIT && <li className="p-3 text-center text-xs text-muted">Showing {LIMIT} of {matches.length}. Filter to narrow it down.</li>}
         </ul>
@@ -161,8 +170,9 @@ export function GePicker({ quarter, category, geCourses, progress, student, stan
 
 // One course. Anything that could stop the student from taking it (a missing prerequisite or an
 // enrollment restriction) underlines the name in red and says what to do about it.
-export function GeRow({ course, hasTree, missing, restriction, reasons, highlight, onAdd, onShowCourse }: {
+export function GeRow({ course, hasTree, missing, restriction, reasons, highlight, scheduleTerm, onAdd, onShowCourse }: {
   course: GeCandidate;
+  scheduleTerm?: string | null; // show this quarter's live Schedule of Classes status
   hasTree: boolean;
   missing: Missing[];
   restriction: RestrictionCheck;
@@ -194,17 +204,7 @@ export function GeRow({ course, hasTree, missing, restriction, reasons, highligh
 
         {missing.length > 0 && (
           <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-            Course requires{" "}
-            {missing.map((m, i) => (
-              <span key={m.kind === "course" ? m.id : m.kind === "exam" ? m.name : m.text}>
-                {i > 0 && (i === missing.length - 1 ? " and " : ", ")}
-                {m.kind === "course" ? (
-                  <button type="button" onClick={() => onShowCourse(m.id)} className="font-mono font-semibold underline decoration-red-500 underline-offset-2 hover:text-red-700 dark:hover:text-red-300">{m.code}</button>
-                ) : (
-                  <span className="font-semibold">{m.kind === "exam" ? m.name : m.text}</span>
-                )}
-              </span>
-            ))}{" "}
+            Course requires <MissingList missing={missing} onShowCourse={onShowCourse} />{" "}
             first ·{" "}
             <button type="button" onClick={() => onShowCourse(course.id)} className="underline underline-offset-2">see all requirements</button>
           </p>
@@ -218,6 +218,7 @@ export function GeRow({ course, hasTree, missing, restriction, reasons, highligh
         {restriction.kind === "blocked" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">Restricted: {restriction.text}</p>}
         {restriction.kind === "priority" && <p className="mt-1 text-xs text-red-600 dark:text-red-400">Enrollment limit: {restriction.text}</p>}
         {reasons && <p className="mt-1 text-xs text-muted">{reasons.join(" · ")}</p>}
+        {scheduleTerm && course.live?.term === scheduleTerm && <p className="mt-1"><LiveBadge live={course.live} /></p>}
       </div>
       <button type="button" onClick={() => onAdd(course.id)} className="shrink-0 rounded-lg border border-border px-3 py-1 text-sm hover:border-brand hover:text-brand">Add</button>
     </li>

@@ -28,6 +28,11 @@ describe("prerequisite status", () => {
     expect(prereqStatus(tree, state([])).missing).toEqual([{ kind: "course", id: "B1", code: "B 1" }]);
   });
 
+  it("names the other single courses that would satisfy an OR", () => {
+    const s = prereqStatus({ OR: [course("WRITING 39B"), course("WRITING 50"), course("WRITING 45")] }, state([]));
+    expect(s.missing).toEqual([{ kind: "course", id: "WRITING39B", code: "WRITING 39B", or: [{ id: "WRITING50", code: "WRITING 50" }, { id: "WRITING45", code: "WRITING 45" }] }]);
+  });
+
   it("checks exam scores and allows corequisites in the same quarter", () => {
     const exam: PrereqTree = { prereqType: "exam", examName: "AP Calculus BC", minGrade: "4" };
     expect(prereqStatus(exam, state([], [["AP CALCULUS BC", 3]])).met).toBe(false);

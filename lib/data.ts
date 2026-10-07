@@ -1,10 +1,10 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { cacheLife } from "next/cache";
 import { db } from "@/db";
-import { apExams, courses, majors, type PrereqTree, type Requirement } from "@/db/schema";
+import { apExams, courses, majors, offerings, type PrereqTree, type Requirement } from "@/db/schema";
 import { encodeCourse, type IndexRow } from "@/lib/course-index";
 import { isUndeclared, UNDECLARED_ID } from "@/lib/majors";
-import type { GeCandidate } from "@/lib/ge-recommend";
+import type { GeCandidate, LiveSummary } from "@/lib/ge-recommend";
 import { buildPlan, type CatalogCourse } from "@/lib/planner";
 import type { ApExam } from "@/lib/planner/ap";
 import { normalizeCourseId } from "@/lib/planner/prereqs";
@@ -32,6 +32,9 @@ export type PlanPage = {
   details: Record<string, CourseDetails>; // long text, only for courses in the default plan
   apExams: ApExam[];
   majors: MajorSummary[]; // for switching majors without losing settings
+  liveTerm: string | null; // newest term on UCI's Schedule of Classes, e.g. "2026 Fall"
+  dataUpdated: string | null; // when course data was last imported, e.g. "Oct 7, 2026"
+  live: Record<string, LiveSummary>; // this major's courses on that schedule
   entryYear: number; // default first Fall
   offeredSince: number;
 };
@@ -100,6 +103,17 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
     details: Object.fromEntries(detailRows.map((r) => [r.id, { description: r.description, prerequisiteText: r.prerequisiteText }])),
     apExams: exams,
     majors: await getMajors(),
+    dataUpdated: await (async () => {
+      const [row] = await db.select({ at: sql<Date>`max(${courses.updatedAt})` }).from(courses);
+      return row?.at ? new Date(row.at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" }) : null;
+    })(),
+    ...(await (async () => {
+      const live = await getLive();
+      return {
+        liveTerm: live.values().next().value?.term ?? null,
+        live: Object.fromEntries([...subset.keys()].filter((id) => live.has(id)).map((id) => [id, live.get(id)!])),
+      };
+    })()),
     entryYear,
     offeredSince,
   };
@@ -140,8 +154,16 @@ const candidateColumns = {
   prerequisiteText: courses.prerequisiteText, restriction: courses.restriction, overlaps: courses.overlaps,
 };
 
+// What's on the newest published Schedule of Classes, by course id.
+export async function getLive(): Promise<Map<string, LiveSummary>> {
+  const rows = await db.select().from(offerings);
+  // Stored as the API names terms ("2026 Fall"); plans label quarters "Fall 2026".
+  const label = (term: string) => term.split(" ").reverse().join(" ");
+  return new Map(rows.map((r) => [r.courseId, { term: label(r.term), status: r.status, seatsLeft: r.seatsLeft, sections: r.sections.filter((s) => s.type === r.sections[0]?.type).length }]));
+}
+
 // Courses offered in the last four years, with what's needed to judge whether a student can take them.
-function toCandidates(rows: CandidateRow[], offeredSince: number): GeCandidate[] {
+function toCandidates(rows: CandidateRow[], offeredSince: number, live: Map<string, LiveSummary>): GeCandidate[] {
   return rows
     .filter((r) => r.terms.some((t) => Number(t.slice(0, 4)) >= offeredSince))
     .map((r) => {
@@ -158,6 +180,7 @@ function toCandidates(rows: CandidateRow[], offeredSince: number): GeCandidate[]
         prerequisiteText: r.prerequisiteText || null,
         restriction: r.restriction,
         overlaps: r.overlaps,
+        ...(live.has(r.id) ? { live: live.get(r.id) } : {}),
       };
     });
 }
@@ -167,7 +190,7 @@ export async function getGeCourses(): Promise<GeCandidate[]> {
   "use cache";
   cacheLife("days");
   const rows = await db.select(candidateColumns).from(courses).where(sql`cardinality(${courses.ge}) > 0`).orderBy(asc(courses.id));
-  return toCandidates(rows, academicStartYear(new Date()) - 4);
+  return toCandidates(rows, academicStartYear(new Date()) - 4, await getLive());
 }
 
 // Every undergraduate course (numbered under 200) offered recently, for the Course Explorer.
@@ -175,5 +198,5 @@ export async function getExploreCourses(): Promise<GeCandidate[]> {
   "use cache";
   cacheLife("days");
   const rows = await db.select(candidateColumns).from(courses).orderBy(asc(courses.id));
-  return toCandidates(rows, academicStartYear(new Date()) - 4).filter((c) => c.number > 0 && c.number < 200);
+  return toCandidates(rows, academicStartYear(new Date()) - 4, await getLive()).filter((c) => c.number > 0 && c.number < 200);
 }

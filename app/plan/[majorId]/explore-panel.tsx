@@ -14,7 +14,8 @@ const numeral = (code: string) => GE_CATEGORIES.find((c) => c.code === code)?.nu
 
 // Browse every undergraduate course for one quarter, with "Ready for me" on by default so a
 // student only sees classes they can actually take then.
-export function ExplorePanel({ quarters, courses, progress, studentBefore, standingIn, owned, onAdd, onShowCourse }: {
+export function ExplorePanel({ quarters, courses, progress, studentBefore, standingIn, owned, liveTerm, onAdd, onShowCourse }: {
+  liveTerm: string | null; // newest quarter on UCI's Schedule of Classes
   quarters: { index: number; label: string; season: Season; units: number }[];
   courses: GeCourses | null;
   progress: GeProgress;
@@ -34,8 +35,9 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
     setShown(PAGE);
   };
 
+  const scheduleTerm = q && liveTerm === q.label ? liveTerm : null;
   const results = courses && q
-    ? exploreCourses({ courses: courses.values(), season: q.season, student: studentBefore(q.index), standing: standingIn(q.index), owned, progress, filters })
+    ? exploreCourses({ courses: [...courses.values()], season: q.season, student: studentBefore(q.index), standing: standingIn(q.index), owned, progress, filters, scheduleTerm })
     : [];
 
   const toggle = (label: string, key: "readyOnly" | "lowerDivisionOnly" | "noPriority", hint: string) => (
@@ -98,6 +100,11 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
         </div>
       </div>
 
+      <p className={`mx-4 mt-3 rounded-lg px-3 py-2 text-xs ${scheduleTerm ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200" : "bg-background text-muted"}`}>
+        {scheduleTerm
+          ? <>Live from UCI&apos;s {scheduleTerm} Schedule of Classes: only courses actually being offered, with open seats. Updated daily.</>
+          : <>UCI hasn&apos;t posted the {q?.label} Schedule of Classes yet (it usually comes out about 6 weeks before the quarter), so these are courses UCI usually offers in {q?.season}.{liveTerm && ` The newest posted schedule is ${liveTerm}.`}</>}
+      </p>
       <p className="px-4 pt-3 text-xs text-muted" role="status">
         {!courses ? "Loading UCI courses…" : `${results.length} course${results.length === 1 ? "" : "s"} for ${q?.label}`}
         {added && <span className="ml-2 font-medium text-brand">✓ Added {added} to {q?.label}</span>}
@@ -112,6 +119,7 @@ export function ExplorePanel({ quarters, courses, progress, studentBefore, stand
             restriction={r.restriction}
             highlight={r.fillsOpenGe}
             reasons={r.fillsOpenGe.length ? [`Fills GE ${r.fillsOpenGe.map(numeral).join(", ")} (still needed)`] : undefined}
+            scheduleTerm={scheduleTerm}
             onAdd={(id) => { onAdd(id, quarter); setAdded(r.course.code); }}
             onShowCourse={(id) => onShowCourse(id, quarter)}
           />

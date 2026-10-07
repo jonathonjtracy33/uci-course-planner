@@ -78,3 +78,25 @@ export function geCode(label: string): string | null {
   const m = label.match(/^GE ([IVX]+)([ab]?)\b/);
   return m && ROMAN[m[1]] ? `GE-${ROMAN[m[1]]}${m[2].toUpperCase()}` : null;
 }
+
+export type ApiTerm = { year: string; quarter: string; shortName: string };
+export const fetchTerms = () => get<ApiTerm[]>("/websoc/terms");
+export const fetchDepartments = () => get<{ deptCode: string; deptName: string }[]>("/websoc/departments");
+
+export type ApiWebsocSection = {
+  sectionCode: string;
+  sectionType: string;
+  status: string;
+  maxCapacity: string;
+  numCurrentlyEnrolled: { totalEnrolled: string };
+  instructors: string[];
+  meetings: { timeIsTBA: boolean; days?: string; startTime?: { hour: number; minute: number }; endTime?: { hour: number; minute: number } }[];
+};
+export type ApiWebsocCourse = { deptCode: string; courseNumber: string; sections: ApiWebsocSection[] };
+
+export async function fetchSchedule(year: string, quarter: string, department: string): Promise<ApiWebsocCourse[]> {
+  const data = await get<{ schools: { departments: { courses: ApiWebsocCourse[] }[] }[] }>(
+    `/websoc?year=${year}&quarter=${quarter}&department=${encodeURIComponent(department)}`,
+  );
+  return data.schools.flatMap((s) => s.departments.flatMap((d) => d.courses));
+}

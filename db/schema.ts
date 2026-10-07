@@ -1,4 +1,4 @@
-import { pgTable, text, real, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, real, integer, jsonb, timestamp, primaryKey } from "drizzle-orm/pg-core";
 import type { ApExam } from "@/lib/planner/ap";
 
 // A prerequisite tree as the Anteater API returns it, e.g.
@@ -49,3 +49,24 @@ export const apExams = pgTable("ap_exams", {
   rewards: jsonb("rewards").$type<ApExam["rewards"]>().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// One meeting section from UCI's Schedule of Classes, trimmed to what students choose by.
+export type LiveSection = {
+  type: string; // "Lec", "Dis", "Lab"
+  code: string; // 5-digit section code used to enroll in WebReg
+  days: string; // "TuTh"
+  time: string; // "11:00-12:20"
+  instructors: string[];
+  status: string; // "OPEN", "FULL", "Waitl", "NewOnly"
+  seatsLeft: number;
+};
+
+// What's actually on the schedule for the newest published term (from UCI's Schedule of Classes).
+export const offerings = pgTable("offerings", {
+  term: text("term").notNull(), // "2026 Fall"
+  courseId: text("course_id").notNull(),
+  status: text("status").notNull(), // best status across the main (usually lecture) sections
+  seatsLeft: integer("seats_left").notNull(), // open seats across the main sections
+  sections: jsonb("sections").$type<LiveSection[]>().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.term, t.courseId] })]);

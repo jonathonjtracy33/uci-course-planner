@@ -17,6 +17,7 @@ import { AddCourseDialog } from "./add-course-dialog";
 import { CoursePopover } from "./course-popover";
 import { ExplorePanel } from "./explore-panel";
 import { GePicker } from "./ge-picker";
+import { MissingList } from "./missing-list";
 import { NextQuarter, type NextCourse } from "./next-quarter";
 import { SetupFlow } from "./setup-flow";
 import { SettingsPanel } from "./settings-panel";
@@ -36,7 +37,7 @@ const PLAN_QUARTERS = 12;
 const FULL_TIME = 12; // UCI's minimum units for full-time enrollment
 const ELECTIVE_UNITS = 4;
 
-export function PlanView({ major, courses: courseList, details, apExams, majors, entryYear, offeredSince }: PlanPage) {
+export function PlanView({ major, courses: courseList, details, apExams, majors, entryYear, offeredSince, liveTerm, live, dataUpdated }: PlanPage) {
   const router = useRouter();
   const undeclared = isUndeclared(major.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -228,8 +229,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   const nextQuarter = plan.quarters[0];
   const nextCourses: NextCourse[] = nextQuarter
     ? [
-        ...nextQuarter.items.filter((i) => !i.placeholder).map((i): NextCourse => ({ id: i.id, code: factsOf(baseId(i.id))?.code ?? i.id, title: i.title, units: i.units, kind: i.reason.startsWith("Prerequisite") ? "prereq" : "major" })),
-        ...(geByQuarter.get(nextQuarter.index) ?? []).map((g): NextCourse => ({ id: g.id, code: g.facts?.code ?? g.id, title: g.facts?.title ?? "", units: g.facts?.units ?? 4, kind: "added" })),
+        ...nextQuarter.items.filter((i) => !i.placeholder).map((i): NextCourse => ({ id: i.id, code: factsOf(baseId(i.id))?.code ?? i.id, title: i.title, units: i.units, kind: i.reason.startsWith("Prerequisite") ? "prereq" : "major", live: live[baseId(i.id)] })),
+        ...(geByQuarter.get(nextQuarter.index) ?? []).map((g): NextCourse => ({ id: g.id, code: g.facts?.code ?? g.id, title: g.facts?.title ?? "", units: g.facts?.units ?? 4, kind: "added", live: geCourses?.get(g.id)?.live ?? exploreData?.get(g.id)?.live })),
       ]
     : [];
 
@@ -266,6 +267,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           {major.catalogYear && (
             <p className="mt-1 text-sm text-muted">
               {undeclared ? "GE requirements" : "Requirements"} from the {major.catalogYear.slice(0, 4)}–{major.catalogYear.slice(4)} catalog
+              {dataUpdated && <> · UCI data updated {dataUpdated}</>}
+              {liveTerm && <> · live seats for {liveTerm}</>}
             </p>
           )}
           <label className="mt-2 flex items-center gap-2 text-xs text-muted">
@@ -293,6 +296,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           <NextQuarter
             label={nextQuarter.label}
             courses={nextCourses}
+            liveTerm={liveTerm}
             isFirstYear={settings.firstQuarter < 3}
             onPlanGes={autoPlanGes}
             onExplore={() => {
@@ -388,6 +392,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
             studentBefore={studentBefore}
             standingIn={standingIn}
             owned={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+            liveTerm={liveTerm}
             onAdd={(id, quarter) => update({ added: [...settings.added, { id, quarter }] })}
             onShowCourse={(id, quarter) => setPopover({ id, quarter })}
           />
@@ -458,6 +463,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           standing={standingIn(picker.quarter)}
           openUnits={Math.max(0, FULL_LOAD - quarterUnits(pickerQuarter))}
           exclude={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+          liveTerm={liveTerm}
           onAdd={(id) => update({ added: [...settings.added, { id, quarter: picker.quarter }] })}
           onShowCourse={(id) => setPopover({ id, quarter: picker.quarter })}
           onClose={() => setPicker(null)}
@@ -479,6 +485,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
         <CoursePopover
           key={popover.id}
           courseId={popover.id}
+          liveTerm={liveTerm}
           student={studentBefore(popover.quarter)}
           isTaken={(id) => settings.taken.includes(id) || credit.completed.includes(id)}
           onMarkTaken={(id) => update({ taken: [...new Set([...settings.taken, id])] })}
@@ -597,15 +604,7 @@ function GeChip({ item, issues, dimmed, onRemove, onShowCourse }: {
         <span className="block truncate text-xs text-muted">{item.facts ? `${numerals ? `GE ${numerals}` : "Elective"} · ${item.facts.title}` : "Loading…"}</span>
         {missing.length > 0 && (
           <span className="mt-0.5 block text-[11px] text-red-600 dark:text-red-400">
-            Requires{" "}
-            {missing.map((m, i) => (
-              <span key={m.kind === "course" ? m.id : m.kind === "exam" ? m.name : m.text}>
-                {i > 0 && ", "}
-                {m.kind === "course"
-                  ? <button type="button" onClick={() => onShowCourse(m.id)} className="font-mono underline underline-offset-2">{m.code}</button>
-                  : m.kind === "exam" ? m.name : m.text}
-              </span>
-            ))}{" "}
+            Requires <MissingList missing={missing} onShowCourse={onShowCourse} />{" "}
             first
           </span>
         )}

@@ -1,6 +1,8 @@
 "use client";
 
+import type { LiveSummary } from "@/lib/ge-recommend";
 import { catalogueUrl } from "@/lib/links";
+import { LiveBadge } from "./live-badge";
 
 // UCI's official enrollment pages (all on reg.uci.edu or orientation.uci.edu).
 const LINKS = {
@@ -11,16 +13,18 @@ const LINKS = {
   calendar: "https://www.reg.uci.edu/calendars/quarterly/2026-2027/quarterly26-27.html",
 };
 
-export type NextCourse = { id: string; code: string; title: string; units: number; kind: "major" | "prereq" | "added" };
+export type NextCourse = { id: string; code: string; title: string; units: number; kind: "major" | "prereq" | "added"; live?: LiveSummary };
 
-export function NextQuarter({ label, courses, isFirstYear, onPlanGes, onExplore }: {
+export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, onExplore }: {
   label: string;
+  liveTerm: string | null;
   courses: NextCourse[];
   isFirstYear: boolean;
   onPlanGes: () => void;
   onExplore: () => void;
 }) {
   const units = courses.reduce((sum, c) => sum + c.units, 0);
+  const posted = liveTerm === label; // UCI has published this quarter's Schedule of Classes
   return (
     <section aria-labelledby="next-q" className="rounded-xl border border-border bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -28,14 +32,27 @@ export function NextQuarter({ label, courses, isFirstYear, onPlanGes, onExplore 
         <span className="text-xs text-muted">{units} units</span>
       </div>
 
+      <p className="mt-1 text-xs text-muted">
+        {posted
+          ? <>Live seat counts from UCI&apos;s {label} Schedule of Classes, updated daily.</>
+          : <>UCI hasn&apos;t posted the {label} Schedule of Classes yet (usually about 6 weeks before the quarter). Check back then for times and open seats.</>}
+      </p>
+
       {courses.length > 0 ? (
         <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
           {courses.map((c) => (
-            <li key={c.id} className="flex items-baseline justify-between gap-2 rounded-lg bg-background px-3 py-2 text-sm">
-              <a href={catalogueUrl(c.code)} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:text-brand hover:underline">
-                <span className="font-mono text-xs font-semibold">{c.code}</span> · {c.title}
-              </a>
-              <span className="shrink-0 text-xs text-muted">{c.kind === "added" ? "GE / elective" : c.kind === "prereq" ? "Prerequisite" : "Major"} · {c.units}u</span>
+            <li key={c.id} className="rounded-lg bg-background px-3 py-2 text-sm">
+              <div className="flex items-baseline justify-between gap-2">
+                <a href={catalogueUrl(c.code)} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:text-brand hover:underline">
+                  <span className="font-mono text-xs font-semibold">{c.code}</span> · {c.title}
+                </a>
+                <span className="shrink-0 text-xs text-muted">{c.kind === "added" ? "GE / elective" : c.kind === "prereq" ? "Prerequisite" : "Major"} · {c.units}u</span>
+              </div>
+              {posted && (
+                <div className="mt-1">
+                  {c.live ? <LiveBadge live={c.live} /> : <span className="text-[11px] font-medium text-red-600 dark:text-red-400">Not on the {label} schedule. Check with your counselor or pick another course.</span>}
+                </div>
+              )}
             </li>
           ))}
         </ul>

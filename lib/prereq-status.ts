@@ -5,7 +5,7 @@ import type { PrereqTree } from "@/db/schema";
 import { normalizeCourseId } from "./planner/prereqs";
 
 export type Missing =
-  | { kind: "course"; id: string; code: string }
+  | { kind: "course"; id: string; code: string; or?: { id: string; code: string }[] } // or: other courses that would also do
   | { kind: "exam"; name: string }
   | { kind: "text"; text: string }; // the catalogue lists a prerequisite the data doesn't structure
 export type PrereqStatus = { met: boolean; missing: Missing[] };
@@ -38,7 +38,15 @@ export function prereqStatus(tree: PrereqTree | null, s: StudentState): PrereqSt
     if (parts.some((p) => p.met)) return { met: true, missing: [] };
     // Report the option that's closest to done; prefer course paths over exams.
     const best = [...parts].sort((a, b) => a.missing.length - b.missing.length || examCount(a) - examCount(b))[0];
-    return { met: false, missing: best?.missing ?? [] };
+    if (!best) return { met: false, missing: [] };
+    // When the best option is a single course, also name the other single courses that would do
+    // ("WRITING 39B, or WRITING 50, ..."), so it's clear there's a choice.
+    const only = best.missing.length === 1 && best.missing[0].kind === "course" ? best.missing[0] : null;
+    if (only) {
+      const others = parts.flatMap((p) => (p !== best && p.missing.length === 1 && p.missing[0].kind === "course" ? [{ id: p.missing[0].id, code: p.missing[0].code }] : []));
+      if (others.length) return { met: false, missing: [{ ...only, or: others }] };
+    }
+    return { met: false, missing: best.missing };
   }
   return { met: true, missing: [] }; // NOT: a restriction on what you may have taken, not a prerequisite
 }

@@ -21,16 +21,21 @@ export type ExploreResult = {
   restriction: RestrictionCheck;
   ready: boolean;
   fillsOpenGe: string[]; // GE categories it would fill that the student still needs
+  onSchedule: boolean | null; // on the posted Schedule of Classes for that quarter; null = not posted yet
 };
 
+const SEATS: Record<string, number> = { OPEN: 2, NewOnly: 2, Waitl: 1, FULL: 0 };
+const seatRank = (r: ExploreResult) => (r.onSchedule ? SEATS[r.course.live?.status ?? "OPEN"] ?? 1 : 1);
+
 export function exploreCourses(input: {
-  courses: Iterable<GeCandidate>;
+  courses: readonly GeCandidate[]; // an array, not an iterator: a cached iterator is empty the second time
   season: "Fall" | "Winter" | "Spring";
   student: StudentState;
   standing: Standing;
   owned: Set<string>; // taken, credited, or already planned
   progress: GeProgress;
   filters: ExploreFilters;
+  scheduleTerm?: string | null; // the quarter's label when UCI has posted its Schedule of Classes
 }): ExploreResult[] {
   const f = input.filters;
   const words = f.query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -41,7 +46,10 @@ export function exploreCourses(input: {
   const results: ExploreResult[] = [];
   for (const course of input.courses) {
     if (input.owned.has(course.id)) continue;
-    if (course.seasons === "" || !(course.seasons === "*" || course.seasons.includes(input.season[0]))) continue;
+    // Once UCI posts the schedule, it's the source of truth; before that, use past offerings.
+    const onSchedule = input.scheduleTerm ? course.live?.term === input.scheduleTerm : null;
+    const usually = course.seasons !== "" && (course.seasons === "*" || course.seasons.includes(input.season[0]));
+    if (!(onSchedule ?? usually)) continue;
     if (f.kind === "ge" && !course.ge.length) continue;
     if (f.kind === "elective" && course.ge.length) continue;
     if (f.geCategory && !course.ge.includes(f.geCategory)) continue;
@@ -53,7 +61,7 @@ export function exploreCourses(input: {
     const ready = status.met && restriction.kind !== "blocked" && !redundant(course, input.owned);
     if (f.readyOnly && !ready) continue;
     if (f.noPriority && restriction.kind === "priority") continue;
-    results.push({ course, missing: status.missing, restriction, ready, fillsOpenGe: course.ge.filter(openGe) });
+    results.push({ course, missing: status.missing, restriction, ready, fillsOpenGe: course.ge.filter(openGe), onSchedule });
   }
   // When searching, codes that start with the search come first ("math 2" -> MATH 2D before MATH 192).
   const q = f.query.toUpperCase().replace(/\s+/g, "");
@@ -62,6 +70,8 @@ export function exploreCourses(input: {
   return results.sort((a, b) =>
     codeMatch(a) - codeMatch(b) ||
     Number(b.ready) - Number(a.ready) ||
+    // on a posted schedule, a class you can still get into beats a full one
+    seatRank(b) - seatRank(a) ||
     b.fillsOpenGe.length - a.fillsOpenGe.length ||
     Number(a.restriction.kind === "priority") - Number(b.restriction.kind === "priority") ||
     Number(a.course.number >= 100) - Number(b.course.number >= 100) ||
