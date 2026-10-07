@@ -27,9 +27,20 @@ export type ApiCourse = {
   prerequisiteText: string;
   prerequisiteTree: PrereqTree | Record<string, never>;
   terms: string[];
+  geList: string[]; // "GE Ia: Lower Division Writing"
+  repeatabilityType: "times" | "credit_hours" | null; // "May be taken for credit 6 times" / "... for 24 units"
+  repeatabilityTimes: number | null;
 };
 
-export type ApiMajorSummary = { id: string; name: string; type: string; division: string };
+// How many times a course can be taken for credit (1 = not repeatable).
+export function maxTimes(c: Pick<ApiCourse, "repeatabilityType" | "repeatabilityTimes" | "minUnits">): number {
+  const n = c.repeatabilityTimes ?? 0;
+  if (c.repeatabilityType === "times" && n > 1) return n;
+  if (c.repeatabilityType === "credit_hours" && n > 0 && c.minUnits > 0) return Math.max(1, Math.floor(n / c.minUnits));
+  return 1;
+}
+
+export type ApiMajorSummary = { id: string; name: string; type: string; division: string; catalogYear: string };
 export type ApiMajor = { id: string; name: string; catalogYear: string; requirements: Requirement[] };
 
 // Prereq trees write course ids with spaces ("I&C SCI 46"); everything else drops them ("I&CSCI46").
@@ -48,12 +59,20 @@ export async function fetchAllCourses(onPage?: (count: number) => void): Promise
 export type ApiApExam = {
   fullName: string;
   catalogueName: string | null;
-  rewards: { acceptableScores: number[]; coursesGranted: CourseGrant }[];
+  rewards: { acceptableScores: number[]; coursesGranted: CourseGrant; unitsGranted: number; geGranted: Record<string, number> }[];
 };
 
 export const fetchApExams = () => get<ApiApExam[]>("/apExams");
 
 export const fetchMajorList = () => get<ApiMajorSummary[]>("/programs/majors");
 
-export const fetchMajor = (programId: string) =>
-  get<ApiMajor>(`/programs/major?programId=${encodeURIComponent(programId)}`);
+// Without catalogYear the API answers from an arbitrary older catalog, so always ask for one.
+export const fetchMajor = (programId: string, catalogYear: string) =>
+  get<ApiMajor>(`/programs/major?programId=${encodeURIComponent(programId)}&catalogYear=${catalogYear}`);
+
+// "GE Ia: Lower Division Writing" -> "GE-1A", matching the API's geCategory codes.
+const ROMAN: Record<string, string> = { I: "1", II: "2", III: "3", IV: "4", V: "5", VI: "6", VII: "7", VIII: "8" };
+export function geCode(label: string): string | null {
+  const m = label.match(/^GE ([IVX]+)([ab]?)\b/);
+  return m && ROMAN[m[1]] ? `GE-${ROMAN[m[1]]}${m[2].toUpperCase()}` : null;
+}

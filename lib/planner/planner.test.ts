@@ -98,10 +98,32 @@ describe("selecting courses", () => {
   });
 
   it("schedules repeats of a repeatable course in later quarters", () => {
-    const plan = buildPlan([take("Studio, 3 times", ["DRAMA145"], 3)], catalogOf(course("DRAMA145")), opts);
+    const plan = buildPlan([take("Studio, 3 times", ["DRAMA145"], 3)], catalogOf(course("DRAMA145", { maxTimes: 9 })), opts);
     expect(planned(plan)).toEqual(["DRAMA145", "DRAMA145#2", "DRAMA145#3"]);
     expect(where(plan, "DRAMA145#2")).toBeGreaterThan(where(plan, "DRAMA145"));
     expect(where(plan, "DRAMA145#3")).toBeGreaterThan(where(plan, "DRAMA145#2"));
+  });
+
+  it("adds up separate requirements for the same repeatable course", () => {
+    const lab = catalogOf(course("DRAMA81", { maxTimes: 6 }));
+    const plan = buildPlan([take("3 sections", ["DRAMA81"], 3), take("3 more sections", ["DRAMA81"], 3)], lab, opts);
+    expect(planned(plan)).toHaveLength(6);
+  });
+
+  it("never repeats a course past its limit", () => {
+    const plan = buildPlan([take("5 labs", ["LAB", "OTHER"], 5)], catalogOf(course("LAB", { maxTimes: 2 }), course("OTHER")), opts);
+    expect(planned(plan)).toEqual(["LAB", "LAB#2", "OTHER"]);
+    expect(plan.warnings.some((w) => w.includes("Couldn't find enough"))).toBe(true);
+  });
+
+  it("trusts a requirement that names one course several times", () => {
+    const plan = buildPlan([take("2 quarters of ARTHIS 198", ["ARTHIS198"], 2)], catalogOf(course("ARTHIS198")), opts);
+    expect(planned(plan)).toEqual(["ARTHIS198", "ARTHIS198#2"]);
+  });
+
+  it("lets a non-repeatable course count toward two requirements instead of repeating it", () => {
+    const plan = buildPlan([take("Intro", ["ICS33"]), take("Core", ["ICS33", "ICS46"], 2)], catalogOf(course("ICS33"), course("ICS46")), opts);
+    expect(planned(plan)).toEqual(["ICS33", "ICS46"]);
   });
 
   it("leaves out courses the student already completed", () => {
@@ -129,8 +151,13 @@ describe("scheduling", () => {
   });
 
   it("ignores offerings older than the cutoff", () => {
-    expect(offeredSeasons(["2015 Fall", "2025 Winter"], 2022)).toEqual(new Set(["Winter"]));
+    expect(offeredSeasons(["2015 Fall", "2024 Winter", "2025 Winter"], 2022)).toEqual(new Set(["Winter"]));
     expect(offeredSeasons(["2015 Fall"], 2022)).toBeNull(); // no recent data: any season
+  });
+
+  it("doesn't trust a pattern from a single year of offerings", () => {
+    expect(offeredSeasons(["2026 Fall"], 2022)).toBeNull(); // a brand-new course
+    expect(offeredSeasons(["2025 Fall", "2026 Winter"], 2022)).toBeNull(); // same academic year
   });
 
   it("respects the unit cap", () => {
@@ -198,8 +225,8 @@ describe("AP credit", () => {
     name: "AP Calculus BC",
     catalogueName: "AP CALCULUS BC",
     rewards: [
-      { scores: [4, 5], courses: { OR: [{ AND: ["MATH 2A", "MATH 2B"] }, { AND: ["MATH 5A", "MATH 5B"] }] } },
-      { scores: [3], courses: { OR: ["MATH 2A", "MATH 5A"] } },
+      { scores: [4, 5], courses: { OR: [{ AND: ["MATH 2A", "MATH 2B"] }, { AND: ["MATH 5A", "MATH 5B"] }] }, units: 8, ge: { "GE-5A": 1 } },
+      { scores: [3], courses: { OR: ["MATH 2A", "MATH 5A"] }, units: 4, ge: {} },
     ],
   }];
 
@@ -207,6 +234,11 @@ describe("AP credit", () => {
     expect(applyApCredit(exams, { "AP Calculus BC": 5 }).completed).toEqual(expect.arrayContaining(["MATH2A", "MATH2B"]));
     expect(applyApCredit(exams, { "AP Calculus BC": 3 }).completed).not.toContain("MATH2B");
     expect(applyApCredit(exams, { "AP Calculus BC": 2 }).completed).toEqual([]);
+  });
+
+  it("totals unit and GE credit", () => {
+    expect(applyApCredit(exams, { "AP Calculus BC": 5 })).toMatchObject({ units: 8, ge: { "GE-5A": 1 } });
+    expect(applyApCredit(exams, { "AP Calculus BC": 3 })).toMatchObject({ units: 4, ge: {} });
   });
 
   it("drops credited courses and their prerequisites from the plan", () => {

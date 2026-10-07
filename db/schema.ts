@@ -1,4 +1,4 @@
-import { pgTable, text, real, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, real, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
 import type { ApExam } from "@/lib/planner/ap";
 
 // A prerequisite tree as the Anteater API returns it, e.g.
@@ -36,6 +36,8 @@ export const courses = pgTable("courses", {
   prerequisiteText: text("prerequisite_text"),
   prerequisiteTree: jsonb("prerequisite_tree").$type<PrereqTree | null>(),
   terms: text("terms").array().notNull(), // past offerings, e.g. ["2024 Fall", "2025 Winter"]
+  ge: text("ge").array().notNull().default([]),
+  maxTimes: integer("max_times").notNull().default(1), // how many times it can be taken for credit // GE categories it satisfies, e.g. ["GE-2", "GE-8"]
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

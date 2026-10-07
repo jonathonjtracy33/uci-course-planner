@@ -1,5 +1,5 @@
 // A student's choices, stored in the URL so any plan can be shared as a link:
-//   /plan/BS-19H?entry=2025&from=3&units=18&taken=I%26CSCI31,MATH2A&ap=AP+Calculus+BC:5
+//   /plan/BS-19H?entry=2025&from=3&units=18&taken=I%26CSCI31,MATH2A&ap=AP+Calculus+BC:5&ge=WRITING50@0
 // Defaults are left out so the plain URL is the default plan.
 
 export type PlanSettings = {
@@ -8,12 +8,13 @@ export type PlanSettings = {
   maxUnits: number;
   taken: string[]; // course ids
   ap: Record<string, number>; // exam name -> score
+  ge: { id: string; quarter: number }[]; // GE courses the student added, by quarter index
 };
 
 export const UNIT_CHOICES = [12, 13, 14, 15, 16, 17, 18, 19, 20];
 export const DEFAULT_MAX_UNITS = 16;
 
-export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {} });
+export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, ge: [] });
 
 const int = (value: string | null, fallback: number, min: number, max: number) => {
   const n = Number(value);
@@ -34,6 +35,11 @@ export function parseSettings(search: string, defaultEntryYear: number): PlanSet
     maxUnits: int(params.get("units"), DEFAULT_MAX_UNITS, UNIT_CHOICES[0], UNIT_CHOICES.at(-1)!),
     taken: [...new Set((params.get("taken") ?? "").split(",").filter(Boolean))],
     ap,
+    ge: (params.get("ge") ?? "").split(",").flatMap((entry) => {
+      const [id, quarter] = entry.split("@");
+      const q = Number(quarter);
+      return id && Number.isInteger(q) && q >= 0 && q < 18 ? [{ id, quarter: q }] : [];
+    }),
   };
 }
 
@@ -45,6 +51,7 @@ export function serializeSettings(s: PlanSettings, defaultEntryYear: number): st
   if (s.taken.length) params.set("taken", [...s.taken].sort().join(","));
   const ap = Object.entries(s.ap).sort(([a], [b]) => a.localeCompare(b));
   if (ap.length) params.set("ap", ap.map(([name, score]) => `${name}:${score}`).join("|"));
+  if (s.ge.length) params.set("ge", s.ge.map((g) => `${g.id}@${g.quarter}`).join(","));
   const query = params.toString();
   return query ? `?${query}` : "";
 }

@@ -3,7 +3,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { apExams, courses, majors } from "@/db/schema";
-import { fetchAllCourses, fetchApExams, fetchMajor, fetchMajorList } from "@/lib/anteater";
+import { fetchAllCourses, fetchApExams, fetchMajor, fetchMajorList, geCode, maxTimes } from "@/lib/anteater";
 
 const CHUNK = 200;
 
@@ -25,6 +25,8 @@ async function ingestCourses() {
     // the API sends {} for "no prerequisites"
     prerequisiteTree: Object.keys(c.prerequisiteTree ?? {}).length ? (c.prerequisiteTree as never) : null,
     terms: c.terms ?? [],
+    ge: (c.geList ?? []).map(geCode).filter((g) => g !== null),
+    maxTimes: maxTimes(c),
     updatedAt: new Date(),
   }));
 
@@ -46,6 +48,8 @@ async function ingestCourses() {
           prerequisiteText: sql`excluded.prerequisite_text`,
           prerequisiteTree: sql`excluded.prerequisite_tree`,
           terms: sql`excluded.terms`,
+          ge: sql`excluded.ge`,
+          maxTimes: sql`excluded.max_times`,
           updatedAt: sql`excluded.updated_at`,
         },
       });
@@ -58,7 +62,7 @@ async function ingestMajors() {
   let saved = 0;
   for (const summary of list) {
     try {
-      const major = await fetchMajor(summary.id);
+      const major = await fetchMajor(summary.id, summary.catalogYear);
       const row = {
         id: major.id,
         name: major.name,
@@ -86,7 +90,7 @@ async function ingestApExams() {
     const row = {
       name: e.fullName,
       catalogueName: e.catalogueName,
-      rewards: e.rewards.map((r) => ({ scores: r.acceptableScores, courses: r.coursesGranted })),
+      rewards: e.rewards.map((r) => ({ scores: r.acceptableScores, courses: r.coursesGranted, units: r.unitsGranted, ge: r.geGranted })),
       updatedAt: new Date(),
     };
     await db.insert(apExams).values(row).onConflictDoUpdate({ target: apExams.name, set: row });

@@ -9,6 +9,7 @@ export type CatalogCourse = {
   terms: string[]; // past offerings, e.g. "2024 Fall"
   courseLevel?: string | null; // "Upper Division (100-199)"
   restriction?: string | null; // "Seniors only."
+  maxTimes?: number; // times it can be taken for credit; default 1
 };
 
 export type Catalog = Map<string, CatalogCourse>;

@@ -24,6 +24,7 @@ async function fetchCatalog(): Promise<Catalog> {
       terms: courses.terms,
       courseLevel: courses.courseLevel,
       restriction: courses.restriction,
+      maxTimes: courses.maxTimes,
     })
     .from(courses);
   return new Map(rows.map((r) => [r.id, r]));

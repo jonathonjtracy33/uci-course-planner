@@ -2,9 +2,11 @@ import { asc, eq, inArray, sql } from "drizzle-orm";
 import { cacheLife } from "next/cache";
 import { db } from "@/db";
 import { apExams, courses, majors, type PrereqTree, type Requirement } from "@/db/schema";
+import { encodeCourse, type IndexRow } from "@/lib/course-index";
 import { buildPlan, type CatalogCourse } from "@/lib/planner";
 import type { ApExam } from "@/lib/planner/ap";
 import { normalizeCourseId } from "@/lib/planner/prereqs";
+import { offeredSeasons } from "@/lib/planner/schedule";
 
 export type MajorSummary = { id: string; name: string; degreeType: string | null };
 
@@ -19,7 +21,7 @@ export async function getMajors(): Promise<MajorSummary[]> {
 }
 
 // What the browser needs to plan: the catalog entry plus a display code like "I&C SCI 46".
-export type PlannerCourse = CatalogCourse & { code: string };
+export type PlannerCourse = CatalogCourse & { code: string; ge: string[] };
 export type CourseDetails = { description: string | null; prerequisiteText: string | null };
 
 export type PlanPage = {
@@ -57,7 +59,7 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
   const subset = new Map<string, PlannerCourse>();
   for (let frontier = [...new Set(requirementCourses(major.requirements))]; frontier.length; ) {
     const rows = await db
-      .select({ id: courses.id, title: courses.title, department: courses.department, courseNumber: courses.courseNumber, minUnits: courses.minUnits, maxUnits: courses.maxUnits, prerequisiteTree: courses.prerequisiteTree, terms: courses.terms, courseLevel: courses.courseLevel, restriction: courses.restriction })
+      .select({ id: courses.id, title: courses.title, department: courses.department, courseNumber: courses.courseNumber, minUnits: courses.minUnits, maxUnits: courses.maxUnits, prerequisiteTree: courses.prerequisiteTree, terms: courses.terms, courseLevel: courses.courseLevel, restriction: courses.restriction, ge: courses.ge, maxTimes: courses.maxTimes })
       .from(courses)
       .where(inArray(courses.id, frontier));
     for (const r of rows)
@@ -71,6 +73,8 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
         terms: r.terms.filter((t) => Number(t.slice(0, 4)) >= offeredSince), // only recent offerings matter
         courseLevel: r.courseLevel,
         restriction: r.restriction && /seniors only/i.test(r.restriction) ? r.restriction : null, // the only part the planner reads
+        maxTimes: r.maxTimes,
+        ge: r.ge,
       });
     frontier = [...new Set(rows.flatMap((r) => treeCourses(r.prerequisiteTree)))].filter((id) => !subset.has(id));
   }
@@ -92,4 +96,28 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
     entryYear,
     offeredSince,
   };
+}
+
+export async function getCourseIndex(): Promise<IndexRow[]> {
+  "use cache";
+  cacheLife("days");
+  const offeredSince = academicStartYear(new Date()) - 4;
+  const rows = await db
+    .select({ id: courses.id, department: courses.department, courseNumber: courses.courseNumber, title: courses.title, minUnits: courses.minUnits, maxUnits: courses.maxUnits, ge: courses.ge, terms: courses.terms, prerequisiteTree: courses.prerequisiteTree })
+    .from(courses)
+    .orderBy(asc(courses.id));
+  return rows.map((r) => {
+    const recent = r.terms.some((t) => Number(t.slice(0, 4)) >= offeredSince);
+    const seasons = offeredSeasons(r.terms, offeredSince);
+    return encodeCourse({
+      id: r.id,
+      code: `${r.department} ${r.courseNumber}`,
+      title: r.title,
+      units: r.minUnits > 0 ? r.minUnits : r.maxUnits,
+      ge: r.ge,
+      seasons: seasons ? [...seasons].map((s) => s[0]).join("") : recent ? "*" : "",
+      hasPrereqs: r.prerequisiteTree !== null,
+      number: parseInt(r.courseNumber, 10) || 0,
+    });
+  });
 }

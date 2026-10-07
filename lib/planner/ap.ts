@@ -5,7 +5,12 @@ export type CourseGrant = string | { AND: CourseGrant[] } | { OR: CourseGrant[] 
 export type ApExam = {
   name: string; // "AP Calculus BC"
   catalogueName: string | null; // how prerequisite trees refer to it: "AP CALCULUS BC"
-  rewards: { scores: number[]; courses: CourseGrant }[];
+  rewards: {
+    scores: number[];
+    courses: CourseGrant;
+    units: number; // total units of credit, whether or not specific courses are granted
+    ge: Record<string, number>; // GE courses credited per category, e.g. { "GE-6": 1 }
+  }[];
 };
 
 const grantedIds = (g: CourseGrant): string[] =>
@@ -17,11 +22,18 @@ const grantedIds = (g: CourseGrant): string[] =>
 export function applyApCredit(exams: ApExam[], scores: Record<string, number>) {
   const completed: string[] = [];
   const examScores: Record<string, number> = {};
+  const ge: Record<string, number> = {};
+  let units = 0;
   for (const exam of exams) {
     const score = scores[exam.name];
     if (score === undefined) continue;
     examScores[(exam.catalogueName ?? exam.name).toUpperCase()] = score;
-    for (const reward of exam.rewards) if (reward.scores.includes(score)) completed.push(...grantedIds(reward.courses));
+    for (const reward of exam.rewards) {
+      if (!reward.scores.includes(score)) continue;
+      completed.push(...grantedIds(reward.courses));
+      units += reward.units;
+      for (const [category, count] of Object.entries(reward.ge)) ge[category] = (ge[category] ?? 0) + count;
+    }
   }
-  return { completed, exams: examScores };
+  return { completed, exams: examScores, units, ge };
 }

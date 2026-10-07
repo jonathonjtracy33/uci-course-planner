@@ -12,14 +12,18 @@ export type ScheduleOptions = {
   offeredSince: number;
 };
 
-// Seasons a course has run in since `since`. null = no recent data, so assume any season.
+// Seasons a course has run in since `since`. null = not enough history to see a pattern (fewer than
+// two academic years of offerings, e.g. a brand-new course), so assume any season.
 export function offeredSeasons(terms: string[], since: number): Set<Season> | null {
   const seasons = new Set<Season>();
+  const years = new Set<number>();
   for (const term of terms) {
     const [year, season] = term.split(" ");
-    if (Number(year) >= since && SEASONS.includes(season as Season)) seasons.add(season as Season);
+    if (Number(year) < since || !SEASONS.includes(season as Season)) continue;
+    seasons.add(season as Season);
+    years.add(season === "Fall" ? Number(year) : Number(year) - 1); // academic year starts in Fall
   }
-  return seasons.size ? seasons : null;
+  return years.size >= 2 ? seasons : null;
 }
 
 // Length of the longest chain of items that depend on `id`. Items at the head of long chains

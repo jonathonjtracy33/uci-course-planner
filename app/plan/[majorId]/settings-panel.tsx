@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { PlannerCourse } from "@/lib/data";
 import type { ApExam } from "@/lib/planner/ap";
 import { UNIT_CHOICES, type PlanSettings } from "@/lib/plan-settings";
+import { CourseSearch } from "./course-search";
+import type { CourseFacts } from "./plan-view";
+import type { CourseIndex } from "./use-course-index";
 
 const SEASONS = ["Fall", "Winter", "Spring"] as const;
 const quarterLabel = (entryYear: number, q: number) => {
@@ -13,30 +15,23 @@ const quarterLabel = (entryYear: number, q: number) => {
 
 const field = "w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
 
-export function SettingsPanel({ settings, update, defaultEntryYear, courses, apExams, onReset }: {
+export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, index, onSearchFocus, apExams, onReset }: {
   settings: PlanSettings;
   update: (change: Partial<PlanSettings>) => void;
   defaultEntryYear: number;
-  courses: Map<string, PlannerCourse>;
+  factsOf: (id: string) => CourseFacts | null;
+  index: CourseIndex | null;
+  onSearchFocus: () => void;
   apExams: ApExam[];
   onReset: () => void;
 }) {
   const [exam, setExam] = useState("");
   const [score, setScore] = useState(5);
-  const [courseQuery, setCourseQuery] = useState("");
   const [copied, setCopied] = useState(false);
 
   const entryYears = Array.from({ length: 8 }, (_, i) => defaultEntryYear - 6 + i);
-  const codeOf = (id: string) => courses.get(id)?.code ?? id;
-  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.firstQuarter > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
-
-  const addCourse = () => {
-    const q = courseQuery.trim().toUpperCase().replace(/\s+/g, " ");
-    const match = [...courses.values()].find((c) => c.code.toUpperCase() === q || c.id === q.replace(/\s+/g, ""));
-    if (!match) return;
-    update({ taken: [...new Set([...settings.taken, match.id])] });
-    setCourseQuery("");
-  };
+  const codeOf = (id: string) => factsOf(id)?.code ?? id;
+  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.ge.length > 0 || settings.firstQuarter > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -105,20 +100,14 @@ export function SettingsPanel({ settings, update, defaultEntryYear, courses, apE
 
         <div>
           <p className="text-xs font-medium text-muted">Courses already taken</p>
-          <form className="mt-1 flex gap-2" onSubmit={(e) => { e.preventDefault(); addCourse(); }}>
-            <input
-              aria-label="Course code"
-              list="course-codes"
-              className={field}
-              value={courseQuery}
-              onChange={(e) => setCourseQuery(e.target.value)}
-              placeholder="e.g. I&C SCI 31"
+          <div className="mt-1">
+            <CourseSearch
+              index={index}
+              onFocus={onSearchFocus}
+              onPick={(c) => update({ taken: [...new Set([...settings.taken, c.id])] })}
+              placeholder="Search any UCI course, e.g. WRITING 50"
             />
-            <datalist id="course-codes">
-              {[...courses.values()].map((c) => <option key={c.id} value={c.code}>{c.title}</option>)}
-            </datalist>
-            <button type="submit" className="rounded-lg border border-border px-3 text-sm hover:border-brand hover:text-brand">Add</button>
-          </form>
+          </div>
           <Chips
             items={settings.taken.map((id) => ({ key: id, label: codeOf(id) }))}
             onRemove={(id) => update({ taken: settings.taken.filter((t) => t !== id) })}

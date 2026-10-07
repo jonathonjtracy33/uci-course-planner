@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from "react";
 import type { PlanPage, PlannerCourse } from "@/lib/data";
-import { buildPlan, type PlannedItem, type Quarter } from "@/lib/planner";
+import { GE_CATEGORIES, geProgress, UNITS_TO_GRADUATE, type GeCourse } from "@/lib/ge";
+import { buildPlan, SEASONS, type PlannedItem, type Quarter } from "@/lib/planner";
 import { applyApCredit } from "@/lib/planner/ap";
+import { unitsOf } from "@/lib/planner/select";
+import { GePanel } from "./ge-panel";
+import { GePicker } from "./ge-picker";
 import { SettingsPanel } from "./settings-panel";
+import { useCourseIndex } from "./use-course-index";
 import { usePlanSettings } from "./use-plan-settings";
 
 const FULL_LOAD = 16; // a typical full-time quarter
@@ -14,10 +19,15 @@ const shortName = (name: string) => name.replace(/^Major in /, "");
 
 type Role = "selected" | "requires" | "unlocks" | "dimmed" | null;
 type Lookup = { courses: Map<string, PlannerCourse>; details: PlanPage["details"] };
+export type CourseFacts = { code: string; title: string; units: number; ge: string[] };
+type GeItem = { id: string; quarter: number; facts: CourseFacts | null };
+const PLAN_QUARTERS = 12;
 
 export function PlanView({ major, courses: courseList, details, apExams, entryYear, offeredSince }: PlanPage) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settings, update] = usePlanSettings(entryYear);
+  const [picker, setPicker] = useState<{ quarter: number; category?: string } | null>(null);
+  const [wantIndex, setWantIndex] = useState(false);
 
   // The whole planner runs here in the browser (~20 ms), so every setting change is instant.
   // The React Compiler memoizes these, so they only recompute when their inputs change.
@@ -32,6 +42,37 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
     offeredSince,
   });
   const lookup: Lookup = { courses, details };
+
+  // Courses outside this major (taken elsewhere, or added as GEs) need the full course index.
+  const index = useCourseIndex(wantIndex || picker !== null || settings.ge.length > 0 || settings.taken.some((id) => !courses.has(id)));
+  const factsOf = (id: string): CourseFacts | null => {
+    const c = courses.get(id);
+    if (c) return { code: c.code, title: c.title, units: unitsOf(c), ge: c.ge };
+    const i = index?.get(id);
+    return i ? { code: i.code, title: i.title, units: i.units, ge: i.ge } : null;
+  };
+
+  // GE courses the student added. Ones in quarters before the plan starts count as taken.
+  const geItems: GeItem[] = settings.ge.map((g) => ({ ...g, facts: factsOf(g.id) }));
+  const geByQuarter = new Map<number, GeItem[]>();
+  for (const g of geItems) if (g.quarter >= settings.firstQuarter) geByQuarter.set(g.quarter, [...(geByQuarter.get(g.quarter) ?? []), g]);
+  const removeGe = (g: GeItem) => update({ ge: settings.ge.filter((x) => !(x.id === g.id && x.quarter === g.quarter)) });
+
+  // Units toward the 180 needed to graduate.
+  const doneIds = [...settings.taken, ...geItems.filter((g) => g.quarter < settings.firstQuarter).map((g) => g.id)];
+  const unknownUnits = doneIds.some((id) => !factsOf(id));
+  const unitsDone = doneIds.reduce((sum, id) => sum + (factsOf(id)?.units ?? 0), 0) + credit.units;
+  const unitsNeeded = Math.max(0, UNITS_TO_GRADUATE - unitsDone);
+  const quartersLeft = Math.max(1, PLAN_QUARTERS - settings.firstQuarter);
+
+  const ge = geProgress(
+    [
+      ...[...doneIds, ...credit.completed].map((id): GeCourse => ({ id, ge: factsOf(id)?.ge ?? [], status: "done" })),
+      ...plan.quarters.flatMap((q) => q.items).filter((i) => !i.placeholder).map((i): GeCourse => ({ id: baseId(i.id), ge: factsOf(baseId(i.id))?.ge ?? [], status: "planned" })),
+      ...geItems.filter((g) => g.quarter >= settings.firstQuarter).map((g): GeCourse => ({ id: g.id, ge: g.facts?.ge ?? [], status: "planned" })),
+    ],
+    credit.ge,
+  );
 
   const items = new Map(plan.quarters.flatMap((q) => q.items).concat(plan.unscheduled.map((u) => u.item)).map((i) => [i.id, i]));
   const quarterOf = new Map(plan.quarters.flatMap((q) => q.items.map((i) => [i.id, q.label] as const)));
@@ -69,13 +110,19 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const all = [...items.values()];
-  const totalUnits = all.reduce((s, i) => s + i.units, 0);
   // Group by academic year; quarters before the plan starts show as done.
   const lastIndex = plan.quarters.at(-1)?.index ?? 11;
   const years = Array.from({ length: Math.floor(lastIndex / 3) + 1 }, (_, y) =>
     [0, 1, 2].map((s) => plan.quarters.find((q) => q.index === y * 3 + s) ?? { index: y * 3 + s, past: true as const }));
   const select = (id: string) => setSelectedId((cur) => (cur === id ? null : id));
+  const quarterUnits = (q: Quarter) => q.units + (geByQuarter.get(q.index) ?? []).reduce((sum, g) => sum + (g.facts?.units ?? 0), 0);
+  const planned = plan.quarters.filter((q) => q.index < PLAN_QUARTERS);
+  // GE "Add" from the progress panel goes to the lightest quarter (the earliest one, for writing).
+  const findGe = (category: string) => {
+    const target = category === "GE-1A" ? planned[0] : [...planned].sort((a, b) => quarterUnits(a) - quarterUnits(b) || a.index - b.index)[0];
+    if (target) setPicker({ quarter: target.index, category });
+  };
+  const pickerQuarter = picker ? plan.quarters.find((q) => q.index === picker.quarter) : undefined;
   // Taking a course means its prerequisites were taken too.
   const markTaken = (id: string) => {
     const ids = [id, ...requiresOf(id)].map(baseId).filter((x) => courses.has(x));
@@ -91,9 +138,9 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
           {major.catalogYear && <p className="mt-1 text-sm text-muted">Requirements from the {major.catalogYear.slice(0, 4)}–{major.catalogYear.slice(4)} catalog</p>}
         </div>
         <dl className="flex gap-6 text-sm">
-          <Stat label="Courses" value={all.length} />
-          <Stat label="Major units" value={totalUnits} />
-          <Stat label="Per quarter" value={`~${plan.majorUnitsPerQuarter}`} />
+          <Stat label="Units completed" value={unknownUnits && !index ? "…" : unitsDone} />
+          <Stat label="Units needed" value={unknownUnits && !index ? "…" : unitsNeeded} hint={`of ${UNITS_TO_GRADUATE} to graduate`} />
+          <Stat label="Per quarter" value={unknownUnits && !index ? "…" : Math.ceil(unitsNeeded / quartersLeft)} hint={`over ${quartersLeft} quarters`} />
         </dl>
       </header>
 
@@ -102,10 +149,16 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
           settings={settings}
           update={update}
           defaultEntryYear={entryYear}
-          courses={courses}
+          factsOf={factsOf}
+          index={index}
+          onSearchFocus={() => setWantIndex(true)}
           apExams={apExams}
-          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {} })}
+          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {}, ge: [] })}
         />
+      </div>
+
+      <div className="mt-4">
+        <GePanel progress={ge} onFind={findGe} />
       </div>
 
       {plan.warnings.length > 0 && (
@@ -118,6 +171,7 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
         <Legend className="border-l-brand bg-brand-soft" label="Major requirement" />
         <Legend className="border-l-gold bg-gold-soft" label="Prerequisite" />
         <Legend className="border-dashed border-muted" label="Elective slot" />
+        <Legend className="border-l-emerald-500 bg-emerald-500/10" label="GE you added" />
         <span className="hidden sm:inline">· Click a course to see what it requires and unlocks</span>
       </div>
 
@@ -131,7 +185,7 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
               <div className="grid gap-3 sm:grid-cols-3">
                 {quarters.map((q) => "past" in q
                   ? <PastQuarter key={q.index} index={q.index} entryYear={settings.entryYear} />
-                  : <QuarterCard key={q.index} quarter={q} lookup={lookup} roleOf={roleOf} onSelect={select} />)}
+                  : <QuarterCard key={q.index} quarter={q} lookup={lookup} roleOf={roleOf} onSelect={select} ge={geByQuarter.get(q.index) ?? []} onAddGe={() => setPicker({ quarter: q.index })} onRemoveGe={removeGe} />)}
               </div>
             </section>
           ))}
@@ -164,6 +218,18 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
         </aside>
       </div>
 
+      {picker && pickerQuarter && (
+        <GePicker
+          quarter={pickerQuarter}
+          category={picker.category}
+          index={index}
+          progress={ge}
+          exclude={new Set([...settings.taken, ...credit.completed, ...settings.ge.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+          onAdd={(id) => update({ ge: [...settings.ge, { id, quarter: picker.quarter }] })}
+          onClose={() => setPicker(null)}
+        />
+      )}
+
       {/* Mobile: details slide up as a sheet */}
       {selected && (
         <div className="fixed inset-x-0 bottom-0 z-20 max-h-[70vh] overflow-y-auto rounded-t-2xl border-t border-border bg-surface shadow-2xl lg:hidden">
@@ -174,11 +240,12 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
     <div>
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+      {hint && <dd className="text-[11px] text-muted">{hint}</dd>}
     </div>
   );
 }
@@ -193,7 +260,7 @@ function Legend({ className, label }: { className: string; label: string }) {
 }
 
 function PastQuarter({ index, entryYear }: { index: number; entryYear: number }) {
-  const season = (["Fall", "Winter", "Spring"] as const)[index % 3];
+  const season = SEASONS[index % 3];
   const year = entryYear + Math.floor(index / 3) + (season === "Fall" ? 0 : 1);
   return (
     <div className="hidden min-w-0 rounded-xl border border-dashed border-border p-3 text-sm text-muted sm:block">
@@ -202,23 +269,51 @@ function PastQuarter({ index, entryYear }: { index: number; entryYear: number })
   );
 }
 
-function QuarterCard({ quarter, lookup, roleOf, onSelect }: { quarter: Quarter; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void }) {
-  const open = Math.max(0, FULL_LOAD - quarter.units);
+function QuarterCard({ quarter, lookup, roleOf, onSelect, ge, onAddGe, onRemoveGe }: {
+  quarter: Quarter; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void;
+  ge: GeItem[]; onAddGe: () => void; onRemoveGe: (g: GeItem) => void;
+}) {
+  const units = quarter.units + ge.reduce((sum, g) => sum + (g.facts?.units ?? 0), 0);
+  const open = Math.max(0, FULL_LOAD - units);
+  const anySelected = roleOf("\0") !== null; // any course selected: GEs dim like other unrelated courses
   return (
     <div className="flex min-w-0 flex-col rounded-xl border border-border bg-surface p-3">
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-semibold">{quarter.label}</h3>
-        <span className="text-xs tabular-nums text-muted">{quarter.units} units</span>
+        <span className="text-xs tabular-nums text-muted">{units} units</span>
       </div>
       <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-background" aria-hidden>
-        <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, (quarter.units / FULL_LOAD) * 100)}%` }} />
+        <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, (units / FULL_LOAD) * 100)}%` }} />
       </div>
       <ul className="mt-3 flex-1 space-y-1.5">
         {quarter.items.map((item) => (
           <li key={item.id}><CourseChip item={item} lookup={lookup} role={roleOf(item.id)} onSelect={onSelect} /></li>
         ))}
+        {ge.map((g) => (
+          <li key={g.id}>
+            <GeChip item={g} dimmed={anySelected} onRemove={() => onRemoveGe(g)} />
+          </li>
+        ))}
       </ul>
-      {open > 0 && <p className="mt-2 text-xs text-muted">+{open} units open for GEs</p>}
+      <button type="button" onClick={onAddGe} className="mt-2 rounded-md py-1 text-left text-xs text-brand hover:underline">
+        + Add a GE{open > 0 && <span className="text-muted"> · {open} units open</span>}
+      </button>
+    </div>
+  );
+}
+
+function GeChip({ item, dimmed, onRemove }: { item: GeItem; dimmed: boolean; onRemove: () => void }) {
+  const numerals = (item.facts?.ge ?? []).map((g) => GE_CATEGORIES.find((c) => c.code === g)?.numeral ?? g).join(", ");
+  return (
+    <div className={`flex items-start gap-1 rounded-lg border border-border border-l-4 border-l-emerald-500 bg-emerald-500/10 px-2.5 py-1.5 ${dimmed ? "opacity-35" : ""}`}>
+      <div className="min-w-0 flex-1">
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="font-mono text-xs font-semibold">{item.facts?.code ?? item.id}</span>
+          <span className="text-[11px] tabular-nums text-muted">{item.facts ? `${item.facts.units}u` : ""}</span>
+        </span>
+        <span className="block truncate text-xs text-muted">{item.facts ? `GE ${numerals} · ${item.facts.title}` : "Loading…"}</span>
+      </div>
+      <button type="button" onClick={onRemove} aria-label={`Remove ${item.facts?.code ?? item.id}`} className="-mr-1 grid size-5 shrink-0 place-items-center rounded text-muted hover:bg-background hover:text-foreground">×</button>
     </div>
   );
 }
