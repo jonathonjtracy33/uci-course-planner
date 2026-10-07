@@ -129,16 +129,19 @@ export async function getCourseIndex(): Promise<IndexRow[]> {
   });
 }
 
-// Details the GE picker needs (prerequisites, restrictions) for every GE course offered recently.
-export async function getGeCourses(): Promise<GeCandidate[]> {
-  "use cache";
-  cacheLife("days");
-  const offeredSince = academicStartYear(new Date()) - 4;
-  const rows = await db
-    .select({ id: courses.id, department: courses.department, courseNumber: courses.courseNumber, title: courses.title, minUnits: courses.minUnits, maxUnits: courses.maxUnits, ge: courses.ge, terms: courses.terms, prerequisiteTree: courses.prerequisiteTree, prerequisiteText: courses.prerequisiteText, restriction: courses.restriction, overlaps: courses.overlaps })
-    .from(courses)
-    .where(sql`cardinality(${courses.ge}) > 0`)
-    .orderBy(asc(courses.id));
+type CandidateRow = {
+  id: string; department: string; courseNumber: string; title: string; minUnits: number; maxUnits: number; ge: string[];
+  terms: string[]; prerequisiteTree: PrereqTree | null; prerequisiteText: string | null; restriction: string | null; overlaps: string[];
+};
+
+const candidateColumns = {
+  id: courses.id, department: courses.department, courseNumber: courses.courseNumber, title: courses.title, minUnits: courses.minUnits,
+  maxUnits: courses.maxUnits, ge: courses.ge, terms: courses.terms, prerequisiteTree: courses.prerequisiteTree,
+  prerequisiteText: courses.prerequisiteText, restriction: courses.restriction, overlaps: courses.overlaps,
+};
+
+// Courses offered in the last four years, with what's needed to judge whether a student can take them.
+function toCandidates(rows: CandidateRow[], offeredSince: number): GeCandidate[] {
   return rows
     .filter((r) => r.terms.some((t) => Number(t.slice(0, 4)) >= offeredSince))
     .map((r) => {
@@ -150,11 +153,27 @@ export async function getGeCourses(): Promise<GeCandidate[]> {
         units: r.minUnits > 0 ? r.minUnits : r.maxUnits,
         ge: r.ge,
         seasons: seasons ? [...seasons].map((s) => s[0]).join("") : "*",
-        number: parseInt(r.courseNumber, 10) || 0,
+        number: parseInt(r.courseNumber.replace(/^[A-Z]+/, ""), 10) || 0,
         prerequisiteTree: r.prerequisiteTree,
         prerequisiteText: r.prerequisiteText || null,
         restriction: r.restriction,
         overlaps: r.overlaps,
       };
     });
+}
+
+// GE courses only (~800), loaded up front for the GE tools.
+export async function getGeCourses(): Promise<GeCandidate[]> {
+  "use cache";
+  cacheLife("days");
+  const rows = await db.select(candidateColumns).from(courses).where(sql`cardinality(${courses.ge}) > 0`).orderBy(asc(courses.id));
+  return toCandidates(rows, academicStartYear(new Date()) - 4);
+}
+
+// Every undergraduate course (numbered under 200) offered recently, for the Course Explorer.
+export async function getExploreCourses(): Promise<GeCandidate[]> {
+  "use cache";
+  cacheLife("days");
+  const rows = await db.select(candidateColumns).from(courses).orderBy(asc(courses.id));
+  return toCandidates(rows, academicStartYear(new Date()) - 4).filter((c) => c.number > 0 && c.number < 200);
 }

@@ -42,7 +42,7 @@ export const useCourseIndex = lazyJson("/api/courses", (rows: IndexRow[]): Cours
 
 // GE courses with prerequisites and restrictions (~800), for the GE picker.
 // Fields default so a copy cached before a deploy (missing newer fields) still works.
-export const useGeCourses = lazyJson("/api/ge-courses", (list: Partial<GeCandidate>[]): GeCourses =>
+const toCandidates = (list: Partial<GeCandidate>[]): GeCourses =>
   new Map(list.map((c) => [c.id!, {
     ...c,
     ge: c.ge ?? [],
@@ -51,4 +51,9 @@ export const useGeCourses = lazyJson("/api/ge-courses", (list: Partial<GeCandida
     prerequisiteText: c.prerequisiteText ?? null,
     restriction: c.restriction ?? null,
     overlaps: c.overlaps ?? [],
-  } as GeCandidate])));
+  } as GeCandidate]));
+
+export const useGeCourses = lazyJson("/api/ge-courses", toCandidates);
+
+// Every undergraduate course offered recently (~3,600), for the Course Explorer.
+export const useExploreCourses = lazyJson("/api/explore-courses", toCandidates);

@@ -15,11 +15,12 @@ import { courseStatus, type Missing, type StudentState } from "@/lib/prereq-stat
 import { checkRestriction, type RestrictionCheck } from "@/lib/restrictions";
 import { AddCourseDialog } from "./add-course-dialog";
 import { CoursePopover } from "./course-popover";
+import { ExplorePanel } from "./explore-panel";
 import { GePicker } from "./ge-picker";
 import { NextQuarter, type NextCourse } from "./next-quarter";
 import { SetupFlow } from "./setup-flow";
 import { SettingsPanel } from "./settings-panel";
-import { useCourseIndex, useGeCourses } from "./use-course-index";
+import { useCourseIndex, useExploreCourses, useGeCourses } from "./use-course-index";
 import { usePlanSettings } from "./use-plan-settings";
 
 const FULL_LOAD = 16; // a typical full-time quarter
@@ -45,6 +46,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   const [popover, setPopover] = useState<{ id: string; quarter: number } | null>(null);
   const [courseDialog, setCourseDialog] = useState<number | null>(null); // quarter index
   const [autoNote, setAutoNote] = useState<string | null>(null);
+  const [view, setView] = useState<"plan" | "explore">("plan");
 
   // The whole planner runs here in the browser (~20 ms), so every setting change is instant.
   // The React Compiler memoizes these, so they only recompute when their inputs change.
@@ -56,6 +58,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   // Courses the student added (GEs or electives). Ones in quarters before the plan starts count as taken.
   // GE data is small (~25 KB), so load it up front for the GE tools.
   const geCourses = useGeCourses(true);
+  const exploreData = useExploreCourses(view === "explore");
   // Facts about any course: this major's data first, then the GE data (always loaded), then the
   // full index (loaded on demand).
   const factsOf = (id: string): CourseFacts | null => {
@@ -287,7 +290,16 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
 
       {nextQuarter && (
         <div className="mt-6">
-          <NextQuarter label={nextQuarter.label} courses={nextCourses} isFirstYear={settings.firstQuarter < 3} onPlanGes={autoPlanGes} />
+          <NextQuarter
+            label={nextQuarter.label}
+            courses={nextCourses}
+            isFirstYear={settings.firstQuarter < 3}
+            onPlanGes={autoPlanGes}
+            onExplore={() => {
+              setView("explore");
+              document.querySelector('[role="tablist"][aria-label="View"]')?.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
         </div>
       )}
 
@@ -352,6 +364,37 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
         </div>
       )}
 
+      <div className="mt-8 flex gap-1 rounded-xl bg-background p-1" role="tablist" aria-label="View">
+        {([["plan", "My 4-year plan"], ["explore", "Explore courses"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={view === key}
+            onClick={() => setView(key)}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${view === key ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "explore" && (
+        <div className="mt-4">
+          <ExplorePanel
+            quarters={planned.map((q) => ({ index: q.index, label: q.label, season: q.season, units: quarterUnits(q) }))}
+            courses={exploreData}
+            progress={ge}
+            studentBefore={studentBefore}
+            standingIn={standingIn}
+            owned={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+            onAdd={(id, quarter) => update({ added: [...settings.added, { id, quarter }] })}
+            onShowCourse={(id, quarter) => setPopover({ id, quarter })}
+          />
+        </div>
+      )}
+
+      {view === "plan" && <>
       <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
         <Legend className="border-l-brand bg-brand-soft" label="Major requirement" />
         <Legend className="border-l-gold bg-gold-soft" label="Prerequisite" />
@@ -402,6 +445,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           </div>
         </aside>
       </div>
+
+      </>}
 
       {picker && pickerQuarter && (
         <GePicker

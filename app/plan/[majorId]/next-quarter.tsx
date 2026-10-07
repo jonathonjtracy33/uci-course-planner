@@ -13,11 +13,12 @@ const LINKS = {
 
 export type NextCourse = { id: string; code: string; title: string; units: number; kind: "major" | "prereq" | "added" };
 
-export function NextQuarter({ label, courses, isFirstYear, onPlanGes }: {
+export function NextQuarter({ label, courses, isFirstYear, onPlanGes, onExplore }: {
   label: string;
   courses: NextCourse[];
   isFirstYear: boolean;
   onPlanGes: () => void;
+  onExplore: () => void;
 }) {
   const units = courses.reduce((sum, c) => sum + c.units, 0);
   return (
@@ -45,6 +46,10 @@ export function NextQuarter({ label, courses, isFirstYear, onPlanGes }: {
           or use “+ GE” on that quarter below.
         </p>
       )}
+
+      <button type="button" onClick={onExplore} className="mt-3 text-sm font-medium text-brand hover:underline">
+        Browse GEs and electives you can take in {label} →
+      </button>
 
       <details className="mt-4 rounded-lg bg-brand-soft px-3 py-2 text-sm" open={isFirstYear}>
         <summary className="cursor-pointer font-medium">How do I actually sign up for classes at UCI?</summary>
