@@ -30,6 +30,8 @@ export const courses = pgTable("courses", {
   minUnits: real("min_units").notNull(),
   maxUnits: real("max_units").notNull(),
   description: text("description"),
+  courseLevel: text("course_level"), // "Lower Division (1-99)", "Upper Division (100-199)", ...
+  restriction: text("restriction"), // enrollment restrictions, e.g. "Seniors only."
   prerequisiteText: text("prerequisite_text"),
   prerequisiteTree: jsonb("prerequisite_tree").$type<PrereqTree | null>(),
   terms: text("terms").array().notNull(), // past offerings, e.g. ["2024 Fall", "2025 Winter"]

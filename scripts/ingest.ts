@@ -19,6 +19,8 @@ async function ingestCourses() {
     minUnits: c.minUnits,
     maxUnits: c.maxUnits,
     description: c.description || null,
+    courseLevel: c.courseLevel || null,
+    restriction: c.restriction || null,
     prerequisiteText: c.prerequisiteText || null,
     // the API sends {} for "no prerequisites"
     prerequisiteTree: Object.keys(c.prerequisiteTree ?? {}).length ? (c.prerequisiteTree as never) : null,
@@ -39,6 +41,8 @@ async function ingestCourses() {
           minUnits: sql`excluded.min_units`,
           maxUnits: sql`excluded.max_units`,
           description: sql`excluded.description`,
+          courseLevel: sql`excluded.course_level`,
+          restriction: sql`excluded.restriction`,
           prerequisiteText: sql`excluded.prerequisite_text`,
           prerequisiteTree: sql`excluded.prerequisite_tree`,
           terms: sql`excluded.terms`,

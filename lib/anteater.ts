@@ -21,6 +21,8 @@ export type ApiCourse = {
   minUnits: number;
   maxUnits: number;
   description: string;
+  courseLevel: string;
+  restriction: string;
   prerequisiteText: string;
   prerequisiteTree: PrereqTree | Record<string, never>;
   terms: string[];
