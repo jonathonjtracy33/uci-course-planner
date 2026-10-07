@@ -11,6 +11,18 @@ async function ingestCourses() {
   const apiCourses = await fetchAllCourses((n) => process.stdout.write(`\r  fetched ${n} courses`));
   console.log();
 
+  // Overlap text ("WRITING 37.") names courses you can't also get credit for. Match it to real
+  // course ids and record it in both directions, since the catalog often lists only one side.
+  const ids = new Set(apiCourses.map((c) => c.id));
+  const overlaps = new Map<string, Set<string>>();
+  for (const c of apiCourses)
+    for (const part of `${c.overlap ?? ""},${c.sameAs ?? ""}`.split(/[,;.]|\band\b|\bor\b/)) {
+      const other = part.replace(/\s+/g, "");
+      if (!other || other === c.id || !ids.has(other)) continue;
+      overlaps.set(c.id, (overlaps.get(c.id) ?? new Set()).add(other));
+      overlaps.set(other, (overlaps.get(other) ?? new Set()).add(c.id));
+    }
+
   const rows = apiCourses.map((c) => ({
     id: c.id,
     department: c.department,
@@ -27,6 +39,7 @@ async function ingestCourses() {
     terms: c.terms ?? [],
     ge: (c.geList ?? []).map(geCode).filter((g) => g !== null),
     maxTimes: maxTimes(c),
+    overlaps: [...(overlaps.get(c.id) ?? [])],
     updatedAt: new Date(),
   }));
 
@@ -50,6 +63,7 @@ async function ingestCourses() {
           terms: sql`excluded.terms`,
           ge: sql`excluded.ge`,
           maxTimes: sql`excluded.max_times`,
+          overlaps: sql`excluded.overlaps`,
           updatedAt: sql`excluded.updated_at`,
         },
       });

@@ -23,6 +23,10 @@ export const GE_CATEGORIES: GeCategory[] = [
 
 export const V_TOTAL = 3;
 
+// Courses UCI's GE requirement treats as alternatives: take one, not both
+// ("Writing 50 or 39B" for lower-division writing).
+export const GE_ALTERNATIVES: string[][] = [["WRITING50", "WRITING39B"]];
+
 export type GeCourse = { id: string; ge: string[]; status: "done" | "planned" };
 export type GeProgress = Record<string, { done: number; planned: number; need: number; courses: string[] }>;
 

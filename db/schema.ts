@@ -37,7 +37,8 @@ export const courses = pgTable("courses", {
   prerequisiteTree: jsonb("prerequisite_tree").$type<PrereqTree | null>(),
   terms: text("terms").array().notNull(), // past offerings, e.g. ["2024 Fall", "2025 Winter"]
   ge: text("ge").array().notNull().default([]),
-  maxTimes: integer("max_times").notNull().default(1), // how many times it can be taken for credit // GE categories it satisfies, e.g. ["GE-2", "GE-8"]
+  maxTimes: integer("max_times").notNull().default(1), // how many times it can be taken for credit
+  overlaps: text("overlaps").array().notNull().default([]), // courses you can't also get credit for (both directions) // GE categories it satisfies, e.g. ["GE-2", "GE-8"]
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

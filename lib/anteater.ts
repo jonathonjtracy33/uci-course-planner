@@ -28,6 +28,8 @@ export type ApiCourse = {
   prerequisiteTree: PrereqTree | Record<string, never>;
   terms: string[];
   geList: string[]; // "GE Ia: Lower Division Writing"
+  overlap: string; // "WRITING 45" - can't get credit for both
+  sameAs: string; // cross-listed under another department
   repeatabilityType: "times" | "credit_hours" | null; // "May be taken for credit 6 times" / "... for 24 units"
   repeatabilityTimes: number | null;
 };

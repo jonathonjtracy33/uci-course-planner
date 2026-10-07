@@ -3,6 +3,7 @@ import { cacheLife } from "next/cache";
 import { db } from "@/db";
 import { apExams, courses, majors, type PrereqTree, type Requirement } from "@/db/schema";
 import { encodeCourse, type IndexRow } from "@/lib/course-index";
+import type { GeCandidate } from "@/lib/ge-recommend";
 import { buildPlan, type CatalogCourse } from "@/lib/planner";
 import type { ApExam } from "@/lib/planner/ap";
 import { normalizeCourseId } from "@/lib/planner/prereqs";
@@ -120,4 +121,34 @@ export async function getCourseIndex(): Promise<IndexRow[]> {
       number: parseInt(r.courseNumber, 10) || 0,
     });
   });
+}
+
+// Details the GE picker needs (prerequisites, restrictions) for every GE course offered recently.
+export async function getGeCourses(): Promise<GeCandidate[]> {
+  "use cache";
+  cacheLife("days");
+  const offeredSince = academicStartYear(new Date()) - 4;
+  const rows = await db
+    .select({ id: courses.id, department: courses.department, courseNumber: courses.courseNumber, title: courses.title, minUnits: courses.minUnits, maxUnits: courses.maxUnits, ge: courses.ge, terms: courses.terms, prerequisiteTree: courses.prerequisiteTree, prerequisiteText: courses.prerequisiteText, restriction: courses.restriction, overlaps: courses.overlaps })
+    .from(courses)
+    .where(sql`cardinality(${courses.ge}) > 0`)
+    .orderBy(asc(courses.id));
+  return rows
+    .filter((r) => r.terms.some((t) => Number(t.slice(0, 4)) >= offeredSince))
+    .map((r) => {
+      const seasons = offeredSeasons(r.terms, offeredSince);
+      return {
+        id: r.id,
+        code: `${r.department} ${r.courseNumber}`,
+        title: r.title,
+        units: r.minUnits > 0 ? r.minUnits : r.maxUnits,
+        ge: r.ge,
+        seasons: seasons ? [...seasons].map((s) => s[0]).join("") : "*",
+        number: parseInt(r.courseNumber, 10) || 0,
+        prerequisiteTree: r.prerequisiteTree,
+        prerequisiteText: r.prerequisiteText || null,
+        restriction: r.restriction,
+        overlaps: r.overlaps,
+      };
+    });
 }
