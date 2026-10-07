@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MajorSearch } from "@/app/components/major-search";
 import { getMajors } from "@/lib/data";
 
@@ -12,7 +13,15 @@ export default async function Home() {
         Pick your major and get a quarter-by-quarter plan that orders every prerequisite, only schedules classes when
         they&apos;re actually offered, and leaves room for your GEs.
       </p>
-      <div className="mt-8">
+      <Link href="/start" className="mt-8 flex items-center justify-between gap-4 rounded-2xl bg-brand px-5 py-4 text-white shadow-sm hover:brightness-110">
+        <span>
+          <span className="block text-lg font-semibold">Build my plan, step by step</span>
+          <span className="block text-sm text-white/85">Any year at UCI, transfers included. 4 quick questions, then your plan and what to sign up for.</span>
+        </span>
+        <span aria-hidden className="text-2xl">→</span>
+      </Link>
+      <h2 className="mt-10 text-sm font-semibold text-muted">Or jump straight to a major</h2>
+      <div className="mt-3">
         <MajorSearch majors={majors} />
       </div>
     </div>

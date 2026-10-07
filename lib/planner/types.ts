@@ -10,6 +10,7 @@ export type CatalogCourse = {
   courseLevel?: string | null; // "Upper Division (100-199)"
   restriction?: string | null; // "Seniors only."
   maxTimes?: number; // times it can be taken for credit; default 1
+  honors?: boolean; // an honors section ("CHEM H52B"), usually limited to honors students
 };
 
 export type Catalog = Map<string, CatalogCourse>;
@@ -22,7 +23,8 @@ export type PlanOptions = {
   firstQuarter?: number; // quarters since that Fall to start planning from (0 = Fall of year 1); earlier ones are done
   completed?: string[]; // courses already taken (or transferred in)
   exams?: Record<string, number>; // exam name -> score, e.g. { "AP CALCULUS BC": 5 }
-  maxUnitsPerQuarter?: number; // default 16
+  maxUnitsPerQuarter?: number; // whole-quarter limit, default 16
+  reserved?: Record<number, number>; // units per quarter index already used by courses the student added
   balance?: boolean; // spread major courses evenly to leave room for GEs; default true
   quarters?: number; // graduate within this many quarters of starting, default 12 (4 years)
   maxQuarters?: number; // hard stop when a plan overflows, default 18

@@ -79,6 +79,7 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
         courseLevel: r.courseLevel,
         restriction: r.restriction && /seniors only/i.test(r.restriction) ? r.restriction : null, // the only part the planner reads
         maxTimes: r.maxTimes,
+        honors: r.courseNumber.startsWith("H"),
         ge: r.ge,
       });
     frontier = [...new Set(rows.flatMap((r) => treeCourses(r.prerequisiteTree)))].filter((id) => !subset.has(id));

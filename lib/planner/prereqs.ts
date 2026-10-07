@@ -24,7 +24,13 @@ export function treeCost(tree: PrereqTree | null, ctx: PrereqContext, memo = new
     if (tree.prereqType === "exam") return passed(tree.examName, tree.minGrade, ctx) ? 0 : Infinity;
     return courseCost(normalizeCourseId(tree.courseId), ctx, memo, visiting);
   }
-  if ("AND" in tree) return tree.AND.map((t) => treeCost(t, ctx, memo, visiting)).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  if ("AND" in tree) {
+    const costs = tree.AND.map((t) => treeCost(t, ctx, memo, visiting));
+    const possible = costs.filter(Number.isFinite);
+    // Skip impossible parts (retired courses, placement exams), but if nothing is possible, the
+    // whole requirement is (e.g. ICS H32's only prerequisite is an AP exam the student didn't take).
+    return costs.length && !possible.length ? Infinity : possible.reduce((a, b) => a + b, 0);
+  }
   if ("OR" in tree) return Math.min(...tree.OR.map((t) => treeCost(t, ctx, memo, visiting)));
   return 0; // NOT: a restriction, not something to schedule
 }
@@ -38,6 +44,13 @@ function passed(examName: string, minGrade: string | undefined, ctx: PrereqConte
   return Number.isFinite(needed) ? score >= needed : true;
 }
 
+// A course whose prerequisites the student can't currently meet (e.g. ICS H32 needs an AP Computer
+// Science score they haven't entered) is still plannable, but should almost never win over an
+// option they can actually take.
+const UNREACHABLE = 50;
+// Honors courses usually need honors-program admission, so prefer the regular version.
+const HONORS = 10;
+
 export function courseCost(id: string, ctx: PrereqContext, memo = new Map<string, number>(), visiting = new Set<string>()): number {
   if (ctx.have.has(id)) return 0;
   const course = ctx.catalog.get(id);
@@ -47,7 +60,7 @@ export function courseCost(id: string, ctx: PrereqContext, memo = new Map<string
   visiting.add(id);
   const inner = treeCost(course.prerequisiteTree, ctx, memo, visiting);
   visiting.delete(id);
-  const cost = 1 + (Number.isFinite(inner) ? inner : 0);
+  const cost = 1 + (Number.isFinite(inner) ? inner : UNREACHABLE) + (course.honors ? HONORS : 0);
   memo.set(id, cost);
   return cost;
 }

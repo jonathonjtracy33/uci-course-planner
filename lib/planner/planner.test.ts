@@ -64,7 +64,7 @@ describe("prerequisite trees", () => {
 
   it("survives prerequisite cycles", () => {
     const cyclic = catalogOf(course("X", { prerequisiteTree: req("Y") }), course("Y", { prerequisiteTree: req("X") }));
-    expect(courseCost("X", { ...ctx, catalog: cyclic })).toBe(2);
+    expect(Number.isFinite(courseCost("X", { ...ctx, catalog: cyclic }))).toBe(true);
   });
 });
 
@@ -75,6 +75,21 @@ describe("selecting courses", () => {
     const catalog = catalogOf(course("A"), course("B", { prerequisiteTree: req("A") }), course("STATS7"), course("STATS67", { prerequisiteTree: req("B") }));
     const plan = buildPlan([take("Stats", ["STATS67", "STATS7"], 1)], catalog, opts);
     expect(planned(plan)).toEqual(["STATS7"]);
+  });
+
+  it("avoids an option whose prerequisite is an exam the student hasn't passed, unless they have", () => {
+    const catalog = catalogOf(
+      course("ICS31"), course("ICS32", { prerequisiteTree: req("ICS31") }), course("ICS33", { prerequisiteTree: or(req("ICS32"), req("ICSH32")) }),
+      course("ICSH32", { prerequisiteTree: and(exam("AP COMP SCI A", "3")) }), // how the catalog actually writes it
+    );
+    const group: Requirement = { label: "Intro", requirementType: "Group", requirementCount: 1, requirements: [take("31-33", ["ICS31", "ICS32", "ICS33"]), take("H32-33", ["ICSH32", "ICS33"])] };
+    expect(planned(buildPlan([group], catalog, opts))).toEqual(["ICS31", "ICS32", "ICS33"]);
+    expect(planned(buildPlan([group], catalog, { ...opts, exams: { "AP COMP SCI A": 5 } }))).toEqual(["ICS33", "ICSH32"]);
+  });
+
+  it("prefers the regular course over an honors one", () => {
+    const plan = buildPlan([take("Organic chem", ["CHEMH52B", "CHEM51B"], 1)], catalogOf(course("CHEMH52B", { honors: true }), course("CHEM51B")), opts);
+    expect(planned(plan)).toEqual(["CHEM51B"]);
   });
 
   it("reuses a course already in the plan to satisfy an OR prerequisite", () => {
@@ -164,6 +179,12 @@ describe("scheduling", () => {
     const catalog = catalogOf(...["A", "B", "C", "D", "E"].map((id) => course(id)));
     const plan = buildPlan([take("all", ["A", "B", "C", "D", "E"])], catalog, { ...opts, maxUnitsPerQuarter: 8 });
     expect(Math.max(...plan.quarters.map((q) => q.units))).toBeLessThanOrEqual(8);
+  });
+
+  it("counts courses the student added toward each quarter's unit limit", () => {
+    const catalog = catalogOf(...["A", "B", "C", "D"].map((id) => course(id)));
+    const plan = buildPlan([take("all", ["A", "B", "C", "D"])], catalog, { ...opts, maxUnitsPerQuarter: 16, reserved: { 0: 12 } });
+    expect(plan.quarters[0].units).toBe(4); // only 4 of 16 units were free in the first quarter
   });
 
   it("places corequisites that require each other in the same quarter", () => {

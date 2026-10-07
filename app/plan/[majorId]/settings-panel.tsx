@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ApExam } from "@/lib/planner/ap";
 import { UNIT_CHOICES, type PlanSettings } from "@/lib/plan-settings";
 import { CourseSearch } from "./course-search";
+import { UnitsDoneInput } from "./units-done-input";
 import type { CourseFacts } from "./plan-view";
 import type { CourseIndex } from "./use-course-index";
 
@@ -31,7 +32,7 @@ export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, ind
 
   const entryYears = Array.from({ length: 8 }, (_, i) => defaultEntryYear - 6 + i);
   const codeOf = (id: string) => factsOf(id)?.code ?? id;
-  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.added.length > 0 || settings.firstQuarter > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
+  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.added.length > 0 || settings.firstQuarter > 0 || settings.unitsDone > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -65,7 +66,7 @@ export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, ind
           </select>
         </label>
         <label className="text-xs font-medium text-muted">
-          Max major units per quarter
+          Max units per quarter
           <select className={`${field} mt-1`} value={settings.maxUnits} onChange={(e) => update({ maxUnits: Number(e.target.value) })}>
             {UNIT_CHOICES.map((u) => <option key={u} value={u}>{u} units</option>)}
           </select>
@@ -113,6 +114,11 @@ export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, ind
             onRemove={(id) => update({ taken: settings.taken.filter((t) => t !== id) })}
             empty="Or select a course in the plan and choose “Mark as taken”."
           />
+          {settings.firstQuarter > 0 && (
+            <div className="mt-3">
+              <UnitsDoneInput value={settings.unitsDone} onChange={(units) => update({ unitsDone: units })} />
+            </div>
+          )}
         </div>
       </div>
     </section>

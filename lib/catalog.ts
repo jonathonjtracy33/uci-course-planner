@@ -25,9 +25,10 @@ async function fetchCatalog(): Promise<Catalog> {
       courseLevel: courses.courseLevel,
       restriction: courses.restriction,
       maxTimes: courses.maxTimes,
+      courseNumber: courses.courseNumber,
     })
     .from(courses);
-  return new Map(rows.map((r) => [r.id, r]));
+  return new Map(rows.map(({ courseNumber, ...r }) => [r.id, { ...r, honors: courseNumber.startsWith("H") }]));
 }
 
 export async function loadMajor(id: string) {

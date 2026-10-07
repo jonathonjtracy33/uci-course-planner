@@ -9,7 +9,8 @@ const FEATURED = ["BS-19H", "BS-201", "BS-06G", "BS-193"];
 
 const shortName = (name: string) => name.replace(/^Major in /, "");
 
-export function MajorSearch({ majors }: { majors: MajorSummary[] }) {
+// `query` carries answers from earlier setup steps (e.g. "?entry=2025&from=3&setup=3") into the plan.
+export function MajorSearch({ majors, query: carry = "", showUndeclared = true }: { majors: MajorSummary[]; query?: string; showUndeclared?: boolean }) {
   const [query, setQuery] = useState("");
   const featured = FEATURED.map((id) => majors.find((m) => m.id === id)).filter((m) => m !== undefined);
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -17,16 +18,16 @@ export function MajorSearch({ majors }: { majors: MajorSummary[] }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/plan/undeclared" className="flex items-center justify-between gap-4 rounded-xl border border-brand/40 bg-brand-soft px-4 py-3 hover:border-brand">
+      {showUndeclared && <Link href={`/plan/undeclared${carry}`} className="flex items-center justify-between gap-4 rounded-xl border border-brand/40 bg-brand-soft px-4 py-3 hover:border-brand">
         <span>
           <span className="block font-medium">Undeclared or still exploring?</span>
           <span className="block text-sm text-muted">Plan your GEs from your AP scores and classes taken, then try majors without losing anything.</span>
         </span>
         <span aria-hidden className="text-brand">→</span>
-      </Link>
+      </Link>}
       <div className="flex flex-wrap gap-2">
         {featured.map((m) => (
-          <Link key={m.id} href={`/plan/${m.id}`} className="rounded-full border border-border bg-surface px-3 py-1.5 text-sm hover:border-brand hover:text-brand">
+          <Link key={m.id} href={`/plan/${m.id}${carry}`} className="rounded-full border border-border bg-surface px-3 py-1.5 text-sm hover:border-brand hover:text-brand">
             {shortName(m.name)}
           </Link>
         ))}
@@ -47,7 +48,7 @@ export function MajorSearch({ majors }: { majors: MajorSummary[] }) {
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface" aria-live="polite">
         {results.map((m) => (
           <li key={m.id}>
-            <Link href={`/plan/${m.id}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-brand-soft focus-visible:bg-brand-soft focus-visible:outline-none">
+            <Link href={`/plan/${m.id}${carry}`} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-brand-soft focus-visible:bg-brand-soft focus-visible:outline-none">
               <span>{shortName(m.name)}</span>
               {m.degreeType && <span className="shrink-0 rounded bg-background px-2 py-0.5 font-mono text-xs text-muted">{m.degreeType}</span>}
             </Link>

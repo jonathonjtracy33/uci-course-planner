@@ -16,6 +16,8 @@ import { checkRestriction, type RestrictionCheck } from "@/lib/restrictions";
 import { AddCourseDialog } from "./add-course-dialog";
 import { CoursePopover } from "./course-popover";
 import { GePicker } from "./ge-picker";
+import { NextQuarter, type NextCourse } from "./next-quarter";
+import { SetupFlow } from "./setup-flow";
 import { SettingsPanel } from "./settings-panel";
 import { useCourseIndex, useGeCourses } from "./use-course-index";
 import { usePlanSettings } from "./use-plan-settings";
@@ -48,15 +50,6 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   // The React Compiler memoizes these, so they only recompute when their inputs change.
   const courses = new Map(courseList.map((c) => [c.id, c]));
   const credit = applyApCredit(apExams, settings.ap);
-  const plan = buildPlan(major.requirements, courses, {
-    startYear: settings.entryYear,
-    firstQuarter: settings.firstQuarter,
-    maxUnitsPerQuarter: settings.maxUnits,
-    completed: [...settings.taken, ...credit.completed],
-    exams: credit.exams,
-    offeredSince,
-  });
-  const lookup: Lookup = { courses, details };
 
   // Courses outside this major (taken elsewhere, or added as GEs) need the full course index.
   const index = useCourseIndex(wantIndex || picker !== null || courseDialog !== null || settings.added.length > 0 || settings.taken.some((id) => !courses.has(id)));
@@ -71,6 +64,21 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
     const g = geCourses?.get(id) ?? index?.get(id);
     return g ? { code: g.code, title: g.title, units: g.units, ge: g.ge } : null;
   };
+
+  // Units each quarter already has from courses the student added, so major courses don't
+  // overload it. A course whose data hasn't loaded yet counts as a typical 4 units.
+  const reserved: Record<number, number> = {};
+  for (const a of settings.added) reserved[a.quarter] = (reserved[a.quarter] ?? 0) + (factsOf(a.id)?.units ?? 4);
+  const plan = buildPlan(major.requirements, courses, {
+    startYear: settings.entryYear,
+    firstQuarter: settings.firstQuarter,
+    maxUnitsPerQuarter: settings.maxUnits,
+    reserved,
+    completed: [...settings.taken, ...credit.completed],
+    exams: credit.exams,
+    offeredSince,
+  });
+  const lookup: Lookup = { courses, details };
   const geItems: GeItem[] = settings.added.map((g) => ({ ...g, facts: factsOf(g.id) }));
   const geByQuarter = new Map<number, GeItem[]>();
   for (const g of geItems) if (g.quarter >= settings.firstQuarter) geByQuarter.set(g.quarter, [...(geByQuarter.get(g.quarter) ?? []), g]);
@@ -79,7 +87,9 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   // Units toward the 180 needed to graduate.
   const doneIds = [...settings.taken, ...geItems.filter((g) => g.quarter < settings.firstQuarter).map((g) => g.id)];
   const unknownUnits = doneIds.some((id) => !factsOf(id));
-  const unitsDone = doneIds.reduce((sum, id) => sum + (factsOf(id)?.units ?? 0), 0) + credit.units;
+  // Students who've been at UCI a while rarely enter every course, so they can state their total;
+  // use whichever is larger.
+  const unitsDone = Math.max(settings.unitsDone, doneIds.reduce((sum, id) => sum + (factsOf(id)?.units ?? 0), 0) + credit.units);
   const unitsNeeded = Math.max(0, UNITS_TO_GRADUATE - unitsDone);
   const quartersLeft = Math.max(1, PLAN_QUARTERS - settings.firstQuarter);
 
@@ -193,12 +203,57 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
     if (result.length) update({ added: [...settings.added, ...result] });
   };
 
+  // The major's courses in their usual order with nothing marked done, for the setup checklist.
+  const baseline = settings.setup
+    ? buildPlan(major.requirements, courses, { startYear: settings.entryYear, offeredSince })
+        .quarters.flatMap((q) => q.items.filter((i) => !i.placeholder && !i.id.includes("#")).map((item) => ({ item, quarter: q.index })))
+    : [];
+  const baselineItems = new Map(baseline.map((b) => [b.item.id, b.item]));
+  const baselineRequires = (id: string) => {
+    const seen = new Set<string>();
+    const stack = [...(baselineItems.get(id)?.prereqs ?? [])];
+    while (stack.length) {
+      const x = stack.pop()!;
+      if (seen.has(x)) continue;
+      seen.add(x);
+      stack.push(...(baselineItems.get(x)?.prereqs ?? []));
+    }
+    return [...seen];
+  };
+
+  // The first quarter of the plan: what to sign up for next.
+  const nextQuarter = plan.quarters[0];
+  const nextCourses: NextCourse[] = nextQuarter
+    ? [
+        ...nextQuarter.items.filter((i) => !i.placeholder).map((i): NextCourse => ({ id: i.id, code: factsOf(baseId(i.id))?.code ?? i.id, title: i.title, units: i.units, kind: i.reason.startsWith("Prerequisite") ? "prereq" : "major" })),
+        ...(geByQuarter.get(nextQuarter.index) ?? []).map((g): NextCourse => ({ id: g.id, code: g.facts?.code ?? g.id, title: g.facts?.title ?? "", units: g.facts?.units ?? 4, kind: "added" })),
+      ]
+    : [];
+
   // Taking a course means its prerequisites were taken too.
   const markTaken = (id: string) => {
     const ids = [id, ...requiresOf(id)].map(baseId).filter((x) => courses.has(x));
     update({ taken: [...new Set([...settings.taken, ...ids])] });
     setSelectedId(null);
   };
+
+  if (settings.setup) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight sm:text-3xl">{shortName(major.name)}</h1>
+        <SetupFlow
+          settings={settings}
+          update={update}
+          baseline={baseline}
+          requiresOf={baselineRequires}
+          apExams={apExams}
+          index={index}
+          onSearchFocus={() => setWantIndex(true)}
+          factsOf={factsOf}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -230,7 +285,13 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
         </dl>
       </header>
 
-      <div className="mt-6">
+      {nextQuarter && (
+        <div className="mt-6">
+          <NextQuarter label={nextQuarter.label} courses={nextCourses} isFirstYear={settings.firstQuarter < 3} onPlanGes={autoPlanGes} />
+        </div>
+      )}
+
+      <div className="mt-4">
         <SettingsPanel
           settings={settings}
           update={update}
@@ -239,7 +300,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           index={index}
           onSearchFocus={() => setWantIndex(true)}
           apExams={apExams}
-          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {}, added: [], fill: false })}
+          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {}, added: [], fill: false, setup: 0, unitsDone: 0 })}
         />
       </div>
 

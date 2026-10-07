@@ -10,12 +10,23 @@ export type PlanSettings = {
   ap: Record<string, number>; // exam name -> score
   added: { id: string; quarter: number }[]; // courses the student added (GEs or electives), by quarter index
   fill: boolean; // fill the rest of the 180 units with free-elective slots
+  setup: number; // guided setup step being shown on the plan page (0 = none)
+  unitsDone: number; // total units completed so far, as the student reports it (0 = count from courses)
 };
+
+export const SETUP_STEPS = { courses: 3, ap: 4 } as const;
+const SEASONS = ["Fall", "Winter", "Spring"] as const;
+
+// "I'm going into my 2nd year, starting Winter 2027" -> first Fall at UCI and the quarter to plan from.
+// startFallYear is the calendar year of the Fall that begins the starting term's academic year.
+export function fromStanding(yearInCollege: number, startFallYear: number, startSeason: (typeof SEASONS)[number]) {
+  return { entryYear: startFallYear - (yearInCollege - 1), firstQuarter: (yearInCollege - 1) * 3 + SEASONS.indexOf(startSeason) };
+}
 
 export const UNIT_CHOICES = [12, 13, 14, 15, 16, 17, 18, 19, 20];
 export const DEFAULT_MAX_UNITS = 16;
 
-export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, added: [], fill: false });
+export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, added: [], fill: false, setup: 0, unitsDone: 0 });
 
 const int = (value: string | null, fallback: number, min: number, max: number) => {
   const n = Number(value);
@@ -42,6 +53,8 @@ export function parseSettings(search: string, defaultEntryYear: number): PlanSet
       return id && Number.isInteger(q) && q >= 0 && q < 18 ? [{ id, quarter: q }] : [];
     }),
     fill: params.get("fill") === "1",
+    setup: int(params.get("setup"), 0, 0, 9),
+    unitsDone: int(params.get("done"), 0, 0, 400),
   };
 }
 
@@ -55,6 +68,8 @@ export function serializeSettings(s: PlanSettings, defaultEntryYear: number): st
   if (ap.length) params.set("ap", ap.map(([name, score]) => `${name}:${score}`).join("|"));
   if (s.added.length) params.set("add", s.added.map((g) => `${g.id}@${g.quarter}`).join(","));
   if (s.fill) params.set("fill", "1");
+  if (s.setup) params.set("setup", String(s.setup));
+  if (s.unitsDone) params.set("done", String(s.unitsDone));
   const query = params.toString();
   return query ? `?${query}` : "";
 }

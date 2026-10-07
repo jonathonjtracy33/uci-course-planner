@@ -60,6 +60,7 @@ export function buildPlan(requirements: Requirement[], catalog: Catalog, options
     startYear: options.startYear,
     firstQuarter,
     maxUnitsPerQuarter: cap,
+    reserved: options.reserved ?? {},
     quarters,
     maxQuarters: options.maxQuarters ?? 18,
     offeredSince: options.offeredSince ?? options.startYear - 4,
