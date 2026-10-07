@@ -1,0 +1,32 @@
+# Every night: re-import UCI's catalog and the newest Schedule of Classes, then redeploy so the
+# prerendered pages pick up the fresh data.
+#
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   DATABASE_URL         the Neon connection string (same as .env.local)
+#   VERCEL_DEPLOY_HOOK   a Vercel deploy hook URL (Vercel project -> Settings -> Git -> Deploy Hooks)
+name: Refresh UCI data
+
+on:
+  schedule:
+    - cron: "0 11 * * *" # 11:00 UTC = 3 or 4 a.m. in California
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Courses, majors and AP credit
+        run: npm run ingest
+      - name: Schedule of Classes
+        run: npm run ingest:schedule
+      - name: Redeploy
+        run: curl -fsS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
