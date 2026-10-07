@@ -2,7 +2,13 @@
 
 import { GE_CATALOGUE_URL, GE_CATEGORIES, V_TOTAL, type GeProgress } from "@/lib/ge";
 
-export function GePanel({ progress, onFind }: { progress: GeProgress; onFind: (category: string) => void }) {
+export function GePanel({ progress, onFind, onAutoPlan, autoReady, note }: {
+  progress: GeProgress;
+  onFind: (category: string) => void;
+  onAutoPlan: () => void;
+  autoReady: boolean;
+  note: string | null;
+}) {
   const rows = GE_CATEGORIES.flatMap((c) => (c.code === "GE-5B"
     ? [c, { code: "GE-5", numeral: "V", name: "Category V total (Va + Vb + one more)", need: V_TOTAL, note: undefined }]
     : [c]));
@@ -15,6 +21,17 @@ export function GePanel({ progress, onFind }: { progress: GeProgress; onFind: (c
         <a href={GE_CATALOGUE_URL} target="_blank" rel="noreferrer" className="text-xs text-brand underline">UCI GE requirements ↗</a>
       </div>
       <p className="mt-1 text-xs text-muted">Major courses that are also approved GEs count automatically. One course can fill several categories.</p>
+      {complete < GE_CATEGORIES.length && (
+        <button
+          type="button"
+          onClick={onAutoPlan}
+          disabled={!autoReady}
+          className="mt-3 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50"
+        >
+          {autoReady ? "✨ Plan my GEs for me" : "Loading GE courses…"}
+        </button>
+      )}
+      {note && <p className="mt-2 text-xs text-muted" role="status">{note}</p>}
       <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
         {rows.map((c) => {
           const p = progress[c.code];

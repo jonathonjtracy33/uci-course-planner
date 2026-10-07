@@ -1,7 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { fillElectives, planGes } from "@/lib/auto-plan";
 import type { PlanPage, PlannerCourse } from "@/lib/data";
+import { isUndeclared } from "@/lib/majors";
 import { GE_CATEGORIES, geProgress, UNITS_TO_GRADUATE, type GeCourse } from "@/lib/ge";
 import { buildPlan, SEASONS, type PlannedItem, type Quarter } from "@/lib/planner";
 import { applyApCredit } from "@/lib/planner/ap";
@@ -10,6 +13,7 @@ import { GePanel } from "./ge-panel";
 import { catalogueUrl } from "@/lib/links";
 import { courseStatus, type Missing, type StudentState } from "@/lib/prereq-status";
 import { checkRestriction, type RestrictionCheck } from "@/lib/restrictions";
+import { AddCourseDialog } from "./add-course-dialog";
 import { CoursePopover } from "./course-popover";
 import { GePicker } from "./ge-picker";
 import { SettingsPanel } from "./settings-panel";
@@ -26,13 +30,19 @@ type Lookup = { courses: Map<string, PlannerCourse>; details: PlanPage["details"
 export type CourseFacts = { code: string; title: string; units: number; ge: string[] };
 type GeItem = { id: string; quarter: number; facts: CourseFacts | null };
 const PLAN_QUARTERS = 12;
+const FULL_TIME = 12; // UCI's minimum units for full-time enrollment
+const ELECTIVE_UNITS = 4;
 
-export function PlanView({ major, courses: courseList, details, apExams, entryYear, offeredSince }: PlanPage) {
+export function PlanView({ major, courses: courseList, details, apExams, majors, entryYear, offeredSince }: PlanPage) {
+  const router = useRouter();
+  const undeclared = isUndeclared(major.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settings, update] = usePlanSettings(entryYear);
   const [picker, setPicker] = useState<{ quarter: number; category?: string } | null>(null);
   const [wantIndex, setWantIndex] = useState(false);
   const [popover, setPopover] = useState<{ id: string; quarter: number } | null>(null);
+  const [courseDialog, setCourseDialog] = useState<number | null>(null); // quarter index
+  const [autoNote, setAutoNote] = useState<string | null>(null);
 
   // The whole planner runs here in the browser (~20 ms), so every setting change is instant.
   // The React Compiler memoizes these, so they only recompute when their inputs change.
@@ -49,20 +59,22 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
   const lookup: Lookup = { courses, details };
 
   // Courses outside this major (taken elsewhere, or added as GEs) need the full course index.
-  const index = useCourseIndex(wantIndex || picker !== null || settings.ge.length > 0 || settings.taken.some((id) => !courses.has(id)));
+  const index = useCourseIndex(wantIndex || picker !== null || courseDialog !== null || settings.added.length > 0 || settings.taken.some((id) => !courses.has(id)));
+  // Courses the student added (GEs or electives). Ones in quarters before the plan starts count as taken.
+  // GE data is small (~25 KB), so load it up front for the GE tools.
+  const geCourses = useGeCourses(true);
+  // Facts about any course: this major's data first, then the GE data (always loaded), then the
+  // full index (loaded on demand).
   const factsOf = (id: string): CourseFacts | null => {
     const c = courses.get(id);
     if (c) return { code: c.code, title: c.title, units: unitsOf(c), ge: c.ge };
-    const i = index?.get(id);
-    return i ? { code: i.code, title: i.title, units: i.units, ge: i.ge } : null;
+    const g = geCourses?.get(id) ?? index?.get(id);
+    return g ? { code: g.code, title: g.title, units: g.units, ge: g.ge } : null;
   };
-
-  // GE courses the student added. Ones in quarters before the plan starts count as taken.
-  const geCourses = useGeCourses(picker !== null || settings.ge.length > 0);
-  const geItems: GeItem[] = settings.ge.map((g) => ({ ...g, facts: factsOf(g.id) }));
+  const geItems: GeItem[] = settings.added.map((g) => ({ ...g, facts: factsOf(g.id) }));
   const geByQuarter = new Map<number, GeItem[]>();
   for (const g of geItems) if (g.quarter >= settings.firstQuarter) geByQuarter.set(g.quarter, [...(geByQuarter.get(g.quarter) ?? []), g]);
-  const removeGe = (g: GeItem) => update({ ge: settings.ge.filter((x) => !(x.id === g.id && x.quarter === g.quarter)) });
+  const removeGe = (g: GeItem) => update({ added: settings.added.filter((x) => !(x.id === g.id && x.quarter === g.quarter)) });
 
   // Units toward the 180 needed to graduate.
   const doneIds = [...settings.taken, ...geItems.filter((g) => g.quarter < settings.firstQuarter).map((g) => g.id)];
@@ -71,14 +83,12 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
   const unitsNeeded = Math.max(0, UNITS_TO_GRADUATE - unitsDone);
   const quartersLeft = Math.max(1, PLAN_QUARTERS - settings.firstQuarter);
 
-  const ge = geProgress(
-    [
-      ...[...doneIds, ...credit.completed].map((id): GeCourse => ({ id, ge: factsOf(id)?.ge ?? [], status: "done" })),
-      ...plan.quarters.flatMap((q) => q.items).filter((i) => !i.placeholder).map((i): GeCourse => ({ id: baseId(i.id), ge: factsOf(baseId(i.id))?.ge ?? [], status: "planned" })),
-      ...geItems.filter((g) => g.quarter >= settings.firstQuarter).map((g): GeCourse => ({ id: g.id, ge: g.facts?.ge ?? [], status: "planned" })),
-    ],
-    credit.ge,
-  );
+  const geKnown: GeCourse[] = [
+    ...[...doneIds, ...credit.completed].map((id): GeCourse => ({ id, ge: factsOf(id)?.ge ?? [], status: "done" })),
+    ...plan.quarters.flatMap((q) => q.items).filter((i) => !i.placeholder).map((i): GeCourse => ({ id: baseId(i.id), ge: factsOf(baseId(i.id))?.ge ?? [], status: "planned" })),
+    ...geItems.filter((g) => g.quarter >= settings.firstQuarter).map((g): GeCourse => ({ id: g.id, ge: g.facts?.ge ?? [], status: "planned" })),
+  ];
+  const ge = geProgress(geKnown, credit.ge);
 
   const items = new Map(plan.quarters.flatMap((q) => q.items).concat(plan.unscheduled.map((u) => u.item)).map((i) => [i.id, i]));
   const quarterOf = new Map(plan.quarters.flatMap((q) => q.items.map((i) => [i.id, q.label] as const)));
@@ -121,8 +131,17 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
   const years = Array.from({ length: Math.floor(lastIndex / 3) + 1 }, (_, y) =>
     [0, 1, 2].map((s) => plan.quarters.find((q) => q.index === y * 3 + s) ?? { index: y * 3 + s, past: true as const }));
   const select = (id: string) => setSelectedId((cur) => (cur === id ? null : id));
-  const quarterUnits = (q: Quarter) => q.units + (geByQuarter.get(q.index) ?? []).reduce((sum, g) => sum + (g.facts?.units ?? 0), 0);
+  const addedUnits = (q: number) => (geByQuarter.get(q) ?? []).reduce((sum, g) => sum + (g.facts?.units ?? 0), 0);
   const planned = plan.quarters.filter((q) => q.index < PLAN_QUARTERS);
+
+  // Major + GE + added courses rarely reach 180 units on their own. Show the gap, and optionally
+  // fill it with free-elective slots in the lightest quarters.
+  const unitsPlanned = plan.quarters.reduce((sum, q) => sum + q.units + addedUnits(q.index), 0);
+  const gap = Math.max(0, UNITS_TO_GRADUATE - unitsDone - unitsPlanned);
+  const electives = settings.fill ? fillElectives(planned.map((q) => ({ index: q.index, units: q.units + addedUnits(q.index) })), gap) : new Map<number, number>();
+  const electiveUnits = [...electives.values()].reduce((a, b) => a + b, 0) * ELECTIVE_UNITS;
+  const quarterUnits = (q: Quarter) => q.units + addedUnits(q.index) + (electives.get(q.index) ?? 0) * ELECTIVE_UNITS;
+  const belowFullTime = planned.filter((q) => quarterUnits(q) < FULL_TIME).length;
   // GE "Add" from the progress panel goes to the lightest quarter (the earliest one, for writing).
   const findGe = (category: string) => {
     const target = category === "GE-1A" ? planned[0] : [...planned].sort((a, b) => quarterUnits(a) - quarterUnits(b) || a.index - b.index)[0];
@@ -136,8 +155,8 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
   const studentBefore = (q: number): StudentState => {
     const earlier = plan.quarters.filter((x) => x.index < q).flatMap((x) => x.items.map((i) => baseId(i.id)));
     return {
-      have: new Set([...settings.taken, ...credit.completed, ...earlier, ...settings.ge.filter((g) => g.quarter < q).map((g) => g.id)]),
-      sameQuarter: new Set([...(plan.quarters.find((x) => x.index === q)?.items.map((i) => baseId(i.id)) ?? []), ...settings.ge.filter((g) => g.quarter === q).map((g) => g.id)]),
+      have: new Set([...settings.taken, ...credit.completed, ...earlier, ...settings.added.filter((g) => g.quarter < q).map((g) => g.id)]),
+      sameQuarter: new Set([...(plan.quarters.find((x) => x.index === q)?.items.map((i) => baseId(i.id)) ?? []), ...settings.added.filter((g) => g.quarter === q).map((g) => g.id)]),
       exams: examScores,
     };
   };
@@ -148,6 +167,32 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
     if (!c) return null;
     return { missing: courseStatus(c, studentBefore(g.quarter)).missing, restriction: checkRestriction(c.restriction, standingIn(g.quarter)) };
   };
+  // "Plan my GEs for me": the recommender, run quarter by quarter. Undeclared students have room
+  // for more GEs per quarter since they have no major courses yet.
+  const autoPlanGes = () => {
+    if (!geCourses) return;
+    const result = planGes({
+      quarters: planned.map((q) => ({
+        index: q.index,
+        season: q.season,
+        units: q.units + addedUnits(q.index),
+        courseIds: [...q.items.map((i) => baseId(i.id)), ...settings.added.filter((a) => a.quarter === q.index).map((a) => a.id)],
+      })),
+      candidates: [...geCourses.values()],
+      known: geKnown,
+      apGe: credit.ge,
+      have: new Set([...settings.taken, ...credit.completed, ...settings.added.filter((a) => a.quarter < settings.firstQuarter).map((a) => a.id)]),
+      exams: examScores,
+      majorName: major.name,
+      perQuarter: undeclared ? 3 : 2,
+      fullLoad: FULL_LOAD,
+    });
+    setAutoNote(result.length
+      ? `Added ${result.length} GE course${result.length === 1 ? "" : "s"}. Remove any with ×, or use “Add a GE” to swap one.`
+      : "Nothing to add: your GE categories are covered, or there's no room left in your quarters.");
+    if (result.length) update({ added: [...settings.added, ...result] });
+  };
+
   // Taking a course means its prerequisites were taken too.
   const markTaken = (id: string) => {
     const ids = [id, ...requiresOf(id)].map(baseId).filter((x) => courses.has(x));
@@ -160,7 +205,23 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{shortName(major.name)}</h1>
-          {major.catalogYear && <p className="mt-1 text-sm text-muted">Requirements from the {major.catalogYear.slice(0, 4)}–{major.catalogYear.slice(4)} catalog</p>}
+          {major.catalogYear && (
+            <p className="mt-1 text-sm text-muted">
+              {undeclared ? "GE requirements" : "Requirements"} from the {major.catalogYear.slice(0, 4)}–{major.catalogYear.slice(4)} catalog
+            </p>
+          )}
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted">
+            {undeclared ? "Try a major:" : "Change major:"}
+            <select
+              value={major.id}
+              // keep AP scores, courses taken and added courses when switching
+              onChange={(e) => router.push(`/plan/${e.target.value}${window.location.search}`)}
+              className="max-w-[16rem] rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground"
+            >
+              <option value="undeclared">Undeclared / exploring</option>
+              {majors.map((m) => <option key={m.id} value={m.id}>{shortName(m.name)}{m.degreeType ? ` (${m.degreeType})` : ""}</option>)}
+            </select>
+          </label>
         </div>
         <dl className="flex gap-6 text-sm">
           <Stat label="Units completed" value={unknownUnits && !index ? "…" : unitsDone} />
@@ -178,25 +239,63 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
           index={index}
           onSearchFocus={() => setWantIndex(true)}
           apExams={apExams}
-          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {}, ge: [] })}
+          onReset={() => update({ entryYear, firstQuarter: 0, maxUnits: 16, taken: [], ap: {}, added: [], fill: false })}
         />
       </div>
 
+      {undeclared && (
+        <div className="mt-4 rounded-xl border border-brand/40 bg-brand-soft p-4 text-sm">
+          <p className="font-medium">Exploring before you declare?</p>
+          <p className="mt-1 text-muted">
+            GEs count toward every major, so they&apos;re the safest classes to take now. Add your AP scores and any classes you&apos;ve
+            taken above, then press <span className="font-medium text-foreground">Plan my GEs for me</span>. When a major interests you,
+            pick it from <span className="font-medium text-foreground">Try a major</span>: everything you entered carries over.
+          </p>
+        </div>
+      )}
+
       <div className="mt-4">
-        <GePanel progress={ge} onFind={findGe} />
+        <GePanel progress={ge} onFind={findGe} onAutoPlan={autoPlanGes} autoReady={!!geCourses} note={autoNote} />
       </div>
 
-      {plan.warnings.length > 0 && (
+      {plan.warnings.filter((w) => !(undeclared && w.includes("doesn't list any requirements"))).length > 0 && (
         <ul className="mt-6 space-y-1 rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn-ink">
-          {plan.warnings.map((w) => <li key={w}>⚠ {w}</li>)}
+          {plan.warnings.filter((w) => !(undeclared && w.includes("doesn't list any requirements"))).map((w) => <li key={w}>⚠ {w}</li>)}
         </ul>
+      )}
+
+      {(gap > 0 || settings.fill || belowFullTime > 0) && !(unknownUnits && !index) && (
+        <div className="mt-6 flex flex-col gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {settings.fill ? (
+              <p>Added <span className="font-semibold">{electiveUnits} units</span> of free electives so your plan reaches {UNITS_TO_GRADUATE}. Use <span className="font-medium">Pick a course</span> on any slot to choose a real class.</p>
+            ) : (
+              <p>
+                Your plan adds up to <span className="font-semibold">{unitsDone + unitsPlanned} of {UNITS_TO_GRADUATE} units</span>
+                {gap > 0 && <>: <span className="font-semibold">{gap} units short</span>. Fill the rest with electives, a minor, or more GEs.</>}
+              </p>
+            )}
+            {belowFullTime > 0 && (
+              <p className="mt-1 text-xs text-warn-ink">{belowFullTime} quarter{belowFullTime === 1 ? " is" : "s are"} under {FULL_TIME} units, UCI&apos;s full-time minimum.</p>
+            )}
+          </div>
+          {(gap > 0 || settings.fill) && (
+            <button
+              type="button"
+              onClick={() => update({ fill: !settings.fill })}
+              className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium ${settings.fill ? "border border-border hover:border-brand hover:text-brand" : "bg-brand text-white hover:brightness-110"}`}
+            >
+              {settings.fill ? "Remove elective slots" : "Fill with electives"}
+            </button>
+          )}
+        </div>
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
         <Legend className="border-l-brand bg-brand-soft" label="Major requirement" />
         <Legend className="border-l-gold bg-gold-soft" label="Prerequisite" />
         <Legend className="border-dashed border-muted" label="Elective slot" />
-        <Legend className="border-l-emerald-500 bg-emerald-500/10" label="GE you added" />
+        <Legend className="border-l-emerald-500 bg-emerald-500/10" label="Course you added" />
         <span className="hidden sm:inline">· Click a course to see what it requires and unlocks</span>
       </div>
 
@@ -210,7 +309,7 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
               <div className="grid gap-3 sm:grid-cols-3">
                 {quarters.map((q) => "past" in q
                   ? <PastQuarter key={q.index} index={q.index} entryYear={settings.entryYear} />
-                  : <QuarterCard key={q.index} quarter={q} lookup={lookup} roleOf={roleOf} onSelect={select} ge={geByQuarter.get(q.index) ?? []} geIssues={geIssues} onAddGe={() => setPicker({ quarter: q.index })} onRemoveGe={removeGe} onShowCourse={(id) => setPopover({ id, quarter: q.index })} />)}
+                  : <QuarterCard key={q.index} quarter={q} units={quarterUnits(q)} electives={electives.get(q.index) ?? 0} lookup={lookup} roleOf={roleOf} onSelect={select} ge={geByQuarter.get(q.index) ?? []} geIssues={geIssues} onAddGe={() => setPicker({ quarter: q.index })} onAddCourse={() => setCourseDialog(q.index)} onRemoveGe={removeGe} onShowCourse={(id) => setPopover({ id, quarter: q.index })} />)}
               </div>
             </section>
           ))}
@@ -252,10 +351,21 @@ export function PlanView({ major, courses: courseList, details, apExams, entryYe
           student={studentBefore(picker.quarter)}
           standing={standingIn(picker.quarter)}
           openUnits={Math.max(0, FULL_LOAD - quarterUnits(pickerQuarter))}
-          exclude={new Set([...settings.taken, ...credit.completed, ...settings.ge.map((g) => g.id), ...[...items.keys()].map(baseId)])}
-          onAdd={(id) => update({ ge: [...settings.ge, { id, quarter: picker.quarter }] })}
+          exclude={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+          onAdd={(id) => update({ added: [...settings.added, { id, quarter: picker.quarter }] })}
           onShowCourse={(id) => setPopover({ id, quarter: picker.quarter })}
           onClose={() => setPicker(null)}
+        />
+      )}
+
+      {courseDialog !== null && plan.quarters.find((q) => q.index === courseDialog) && (
+        <AddCourseDialog
+          quarter={plan.quarters.find((q) => q.index === courseDialog)!}
+          index={index}
+          exclude={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+          onAdd={(id) => update({ added: [...settings.added, { id, quarter: courseDialog }] })}
+          onShowCourse={(id) => setPopover({ id, quarter: courseDialog })}
+          onClose={() => setCourseDialog(null)}
         />
       )}
 
@@ -311,11 +421,10 @@ function PastQuarter({ index, entryYear }: { index: number; entryYear: number })
 
 type GeIssues = (g: GeItem) => { missing: Missing[]; restriction: RestrictionCheck } | null;
 
-function QuarterCard({ quarter, lookup, roleOf, onSelect, ge, geIssues, onAddGe, onRemoveGe, onShowCourse }: {
-  quarter: Quarter; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void;
-  ge: GeItem[]; geIssues: GeIssues; onAddGe: () => void; onRemoveGe: (g: GeItem) => void; onShowCourse: (id: string) => void;
+function QuarterCard({ quarter, units, electives, lookup, roleOf, onSelect, ge, geIssues, onAddGe, onAddCourse, onRemoveGe, onShowCourse }: {
+  quarter: Quarter; units: number; electives: number; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void;
+  ge: GeItem[]; geIssues: GeIssues; onAddGe: () => void; onAddCourse: () => void; onRemoveGe: (g: GeItem) => void; onShowCourse: (id: string) => void;
 }) {
-  const units = quarter.units + ge.reduce((sum, g) => sum + (g.facts?.units ?? 0), 0);
   const open = Math.max(0, FULL_LOAD - units);
   const anySelected = roleOf("\0") !== null; // any course selected: GEs dim like other unrelated courses
   return (
@@ -336,10 +445,24 @@ function QuarterCard({ quarter, lookup, roleOf, onSelect, ge, geIssues, onAddGe,
             <GeChip item={g} issues={geIssues(g)} dimmed={anySelected} onRemove={() => onRemoveGe(g)} onShowCourse={onShowCourse} />
           </li>
         ))}
+        {Array.from({ length: electives }, (_, i) => (
+          <li key={`elective-${i}`} className={`flex items-center justify-between gap-2 rounded-lg border border-dashed border-muted/60 px-2.5 py-1.5 ${anySelected ? "opacity-35" : ""}`}>
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold">Free elective</span>
+              <span className="block text-xs text-muted">Any course · {ELECTIVE_UNITS} units</span>
+            </span>
+            <button type="button" onClick={onAddCourse} className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs hover:border-brand hover:text-brand">Pick a course</button>
+          </li>
+        ))}
       </ul>
-      <button type="button" onClick={onAddGe} className="mt-2 rounded-md py-1 text-left text-xs text-brand hover:underline">
-        + Add a GE{open > 0 && <span className="text-muted"> · {open} units open</span>}
-      </button>
+      {quarter.index < PLAN_QUARTERS && units < FULL_TIME && (
+        <p className="mt-2 text-[11px] text-warn-ink">Under {FULL_TIME} units (full-time)</p>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <button type="button" onClick={onAddGe} className="text-brand hover:underline">+ GE</button>
+        <button type="button" onClick={onAddCourse} className="text-brand hover:underline">+ Course</button>
+        {open > 0 && <span className="text-muted">{open} units open</span>}
+      </div>
     </div>
   );
 }
@@ -365,7 +488,7 @@ function GeChip({ item, issues, dimmed, onRemove, onShowCourse }: {
           </a>
           <span className="text-[11px] tabular-nums text-muted">{item.facts ? `${item.facts.units}u` : ""}</span>
         </span>
-        <span className="block truncate text-xs text-muted">{item.facts ? `GE ${numerals} · ${item.facts.title}` : "Loading…"}</span>
+        <span className="block truncate text-xs text-muted">{item.facts ? `${numerals ? `GE ${numerals}` : "Elective"} · ${item.facts.title}` : "Loading…"}</span>
         {missing.length > 0 && (
           <span className="mt-0.5 block text-[11px] text-red-600 dark:text-red-400">
             Requires{" "}

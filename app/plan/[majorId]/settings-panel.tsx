@@ -31,7 +31,7 @@ export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, ind
 
   const entryYears = Array.from({ length: 8 }, (_, i) => defaultEntryYear - 6 + i);
   const codeOf = (id: string) => factsOf(id)?.code ?? id;
-  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.ge.length > 0 || settings.firstQuarter > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
+  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.added.length > 0 || settings.firstQuarter > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(window.location.href);

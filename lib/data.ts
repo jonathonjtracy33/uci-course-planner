@@ -3,6 +3,7 @@ import { cacheLife } from "next/cache";
 import { db } from "@/db";
 import { apExams, courses, majors, type PrereqTree, type Requirement } from "@/db/schema";
 import { encodeCourse, type IndexRow } from "@/lib/course-index";
+import { isUndeclared, UNDECLARED_ID } from "@/lib/majors";
 import type { GeCandidate } from "@/lib/ge-recommend";
 import { buildPlan, type CatalogCourse } from "@/lib/planner";
 import type { ApExam } from "@/lib/planner/ap";
@@ -30,6 +31,7 @@ export type PlanPage = {
   courses: PlannerCourse[]; // every course this major could possibly need
   details: Record<string, CourseDetails>; // long text, only for courses in the default plan
   apExams: ApExam[];
+  majors: MajorSummary[]; // for switching majors without losing settings
   entryYear: number; // default first Fall
   offeredSince: number;
 };
@@ -49,7 +51,9 @@ const treeCourses = (tree: PrereqTree | null): string[] => {
 export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
   "use cache";
   cacheLife("days");
-  const [major] = await db.select().from(majors).where(eq(majors.id, majorId));
+  const [major] = isUndeclared(majorId)
+    ? [{ id: UNDECLARED_ID, name: "Undeclared", catalogYear: (await db.select({ y: majors.catalogYear }).from(majors).limit(1))[0]?.y ?? null, requirements: [] as Requirement[] }]
+    : await db.select().from(majors).where(eq(majors.id, majorId));
   if (!major) return null;
 
   const entryYear = academicStartYear(new Date());
@@ -94,6 +98,7 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
     courses: [...subset.values()],
     details: Object.fromEntries(detailRows.map((r) => [r.id, { description: r.description, prerequisiteText: r.prerequisiteText }])),
     apExams: exams,
+    majors: await getMajors(),
     entryYear,
     offeredSince,
   };

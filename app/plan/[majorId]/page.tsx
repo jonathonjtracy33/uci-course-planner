@@ -3,11 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { getMajors, getPlanPage } from "@/lib/data";
+import { UNDECLARED_ID } from "@/lib/majors";
 import { PlanView } from "./plan-view";
 
 export async function generateStaticParams() {
   const majors = await getMajors();
-  return majors.map((m) => ({ majorId: m.id }));
+  return [{ majorId: UNDECLARED_ID }, ...majors.map((m) => ({ majorId: m.id }))];
 }
 
 export async function generateMetadata({ params }: PageProps<"/plan/[majorId]">): Promise<Metadata> {

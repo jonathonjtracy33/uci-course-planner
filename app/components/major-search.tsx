@@ -17,6 +17,13 @@ export function MajorSearch({ majors }: { majors: MajorSummary[] }) {
 
   return (
     <div className="space-y-6">
+      <Link href="/plan/undeclared" className="flex items-center justify-between gap-4 rounded-xl border border-brand/40 bg-brand-soft px-4 py-3 hover:border-brand">
+        <span>
+          <span className="block font-medium">Undeclared or still exploring?</span>
+          <span className="block text-sm text-muted">Plan your GEs from your AP scores and classes taken, then try majors without losing anything.</span>
+        </span>
+        <span aria-hidden className="text-brand">→</span>
+      </Link>
       <div className="flex flex-wrap gap-2">
         {featured.map((m) => (
           <Link key={m.id} href={`/plan/${m.id}`} className="rounded-full border border-border bg-surface px-3 py-1.5 text-sm hover:border-brand hover:text-brand">

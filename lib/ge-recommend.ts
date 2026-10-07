@@ -97,7 +97,8 @@ export function recommendGes(input: {
         (c.status.met ? 6 : -12) +
         (c.restriction.kind === "priority" ? -2 : 0) +
         (c.course.number < 100 ? 1 : 0) +
-        (c.course.units <= unitsLeft ? 1 : -1);
+        (c.course.units <= unitsLeft ? 1 : -1) +
+        (c.course.number >= 100 && input.standing.year === 1 ? -15 : 0); // upper division isn't for freshmen
       if (!best || score > best.score || (score === best.score && c.course.code < best.rec.course.code)) {
         best = { score, rec: { course: c.course, fills: f, missing: c.status.missing, restriction: c.restriction, reasons: [] } };
       }
