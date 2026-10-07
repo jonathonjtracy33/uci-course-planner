@@ -1,4 +1,4 @@
-import { pgTable, text, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, real, jsonb, timestamp } from "drizzle-orm/pg-core";
 
 // A prerequisite tree as the Anteater API returns it, e.g.
 // { AND: [{ prereqType: "course", courseId: "I&C SCI 46", ... }, { OR: [...] }] }
@@ -27,8 +27,8 @@ export const courses = pgTable("courses", {
   department: text("department").notNull(), // "I&C SCI"
   courseNumber: text("course_number").notNull(), // "46"
   title: text("title").notNull(),
-  minUnits: integer("min_units").notNull(),
-  maxUnits: integer("max_units").notNull(),
+  minUnits: real("min_units").notNull(),
+  maxUnits: real("max_units").notNull(),
   description: text("description"),
   prerequisiteText: text("prerequisite_text"),
   prerequisiteTree: jsonb("prerequisite_tree").$type<PrereqTree | null>(),
