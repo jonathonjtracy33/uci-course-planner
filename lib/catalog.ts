@@ -3,7 +3,17 @@ import { db } from "@/db";
 import { courses, majors } from "@/db/schema";
 import type { Catalog } from "@/lib/planner";
 
-export async function loadCatalog(): Promise<Catalog> {
+// The catalog is ~9k rows and never changes between ingests, so load it once per process.
+let catalog: Promise<Catalog> | null = null;
+export function loadCatalog(): Promise<Catalog> {
+  catalog ??= fetchCatalog().catch((err) => {
+    catalog = null;
+    throw err;
+  });
+  return catalog;
+}
+
+async function fetchCatalog(): Promise<Catalog> {
   const rows = await db
     .select({
       id: courses.id,
