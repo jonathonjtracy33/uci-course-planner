@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { ContinuePlan } from "./continue-plan";
 
 const TAGLINE = ["Your", "college", "path,", "designed", "just", "for", "you."];
 
 // The home page hero: "Welcome" written in cursive, then the tagline and the button.
 // All CSS animation (see globals.css), so it starts immediately and needs no JavaScript.
-export function Intro() {
+export function Intro({ majorNames }: { majorNames: Record<string, string> }) {
   return (
     <section className="relative grid min-h-[68vh] place-items-center px-4 text-center" aria-label="Welcome to DegreePath">
       <svg className="intro-welcome pointer-events-none absolute inset-x-0 top-1/2 mx-auto h-40 w-full max-w-2xl -translate-y-1/2 sm:h-56" viewBox="0 0 700 220" aria-hidden>
@@ -56,6 +57,9 @@ export function Intro() {
           <Link href="/start" className="inline-flex items-center gap-2 rounded-full bg-brand px-8 py-3.5 text-lg font-semibold text-white shadow-lg shadow-brand/20 transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">
             Build My Plan <span aria-hidden>→</span>
           </Link>
+          <div>
+            <ContinuePlan majorNames={majorNames} />
+          </div>
         </div>
       </div>
     </section>
