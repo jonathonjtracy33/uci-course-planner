@@ -3,7 +3,7 @@ import { fromStanding, parseSettings, serializeSettings } from "./plan-settings"
 
 describe("share links", () => {
   it("round-trips every setting through the URL", () => {
-    const settings = { entryYear: 2025, firstQuarter: 3, maxUnits: 18, taken: ["I&CSCI31", "WRITING50"], ap: { "AP Physics C: Mechanics": 5 }, added: [{ id: "ANTHRO2A", quarter: 4 }], fill: true, setup: 6, unitsDone: 52, pace: "early" as const, grad: 10, summer: true, sections: ["35010", "35020"] };
+    const settings = { entryYear: 2025, firstQuarter: 3, maxUnits: 18, taken: ["I&CSCI31", "WRITING50"], ap: { "AP Physics C: Mechanics": 5 }, hsLanguage: true, added: [{ id: "ANTHRO2A", quarter: 4 }], fill: true, setup: 6, unitsDone: 52, pace: "early" as const, grad: 10, summer: true, sections: ["35010", "35020"] };
     expect(parseSettings(serializeSettings(settings, 2026), 2026)).toEqual(settings);
   });
 

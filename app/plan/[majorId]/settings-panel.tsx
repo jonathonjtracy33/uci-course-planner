@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ApExam } from "@/lib/planner/ap";
 import { UNIT_CHOICES, type PlanSettings } from "@/lib/plan-settings";
 import { CourseSearch } from "./course-search";
+import { LanguageCheckbox } from "./language-checkbox";
 import { UnitsDoneInput } from "./units-done-input";
 import type { CourseFacts } from "./plan-view";
 import type { CourseIndex } from "./use-course-index";
@@ -32,7 +33,7 @@ export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, ind
 
   const entryYears = Array.from({ length: 8 }, (_, i) => defaultEntryYear - 6 + i);
   const codeOf = (id: string) => factsOf(id)?.code ?? id;
-  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.added.length > 0 || settings.firstQuarter > 0 || settings.unitsDone > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
+  const customized = settings.taken.length > 0 || Object.keys(settings.ap).length > 0 || settings.hsLanguage || settings.added.length > 0 || settings.firstQuarter > 0 || settings.unitsDone > 0 || settings.maxUnits !== 16 || settings.entryYear !== defaultEntryYear;
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
@@ -97,6 +98,9 @@ export function SettingsPanel({ settings, update, defaultEntryYear, factsOf, ind
             items={Object.entries(settings.ap).map(([name, s]) => ({ key: name, label: `${name.replace(/^AP /, "")} · ${s}` }))}
             onRemove={(name) => update({ ap: Object.fromEntries(Object.entries(settings.ap).filter(([n]) => n !== name)) })}
           />
+          <div className="mt-3">
+            <LanguageCheckbox checked={settings.hsLanguage} onChange={(hsLanguage) => update({ hsLanguage })} />
+          </div>
         </div>
 
         <div>

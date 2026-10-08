@@ -65,6 +65,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   // The React Compiler memoizes these, so they only recompute when their inputs change.
   const courses = new Map(courseList.map((c) => [c.id, c]));
   const credit = applyApCredit(apExams, settings.ap);
+  // GE credit that isn't a course: AP exams, plus three years of one language in high school (GE VI).
+  const geCredit = settings.hsLanguage ? { ...credit.ge, "GE-6": (credit.ge["GE-6"] ?? 0) + 1 } : credit.ge;
 
   // Courses outside this major (taken elsewhere, or added as GEs) need the full course index.
   const index = useCourseIndex(wantIndex || picker !== null || courseDialog !== null || settings.added.length > 0 || settings.taken.some((id) => !courses.has(id)));
@@ -118,11 +120,11 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   const quartersLeft = Math.max(1, termIndexes(settings.firstQuarter, gradAt, summersOn).length);
 
   const geKnown: GeCourse[] = [
-    ...[...doneIds, ...credit.completed].map((id): GeCourse => ({ id, ge: factsOf(id)?.ge ?? [], status: "done" })),
+    ...[...doneIds, ...credit.geCourses].map((id): GeCourse => ({ id, ge: factsOf(id)?.ge ?? [], status: "done" })),
     ...plan.quarters.flatMap((q) => q.items).filter((i) => !i.placeholder).map((i): GeCourse => ({ id: baseId(i.id), ge: factsOf(baseId(i.id))?.ge ?? [], status: "planned" })),
     ...geItems.filter((g) => g.quarter >= settings.firstQuarter).map((g): GeCourse => ({ id: g.id, ge: g.facts?.ge ?? [], status: "planned" })),
   ];
-  const ge = geProgress(geKnown, credit.ge);
+  const ge = geProgress(geKnown, geCredit);
 
   const items = new Map(plan.quarters.flatMap((q) => q.items).concat(plan.unscheduled.map((u) => u.item)).map((i) => [i.id, i]));
   const quarterOf = new Map(plan.quarters.flatMap((q) => q.items.map((i) => [i.id, q.label] as const)));
@@ -217,7 +219,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
       })),
       candidates: [...geCourses.values()],
       known: geKnown,
-      apGe: credit.ge,
+      apGe: geCredit,
       have: new Set([...settings.taken, ...credit.completed, ...settings.added.filter((a) => a.quarter < settings.firstQuarter).map((a) => a.id)]),
       exams: examScores,
       majorName: major.name,

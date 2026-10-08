@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ApExam, CourseGrant } from "@/lib/planner/ap";
 import type { PlannedItem } from "@/lib/planner";
+import { LanguageCheckbox } from "./language-checkbox";
 import { Stepper } from "@/app/components/stepper";
 import { ON_TIME, SETUP_STEPS, type PlanSettings } from "@/lib/plan-settings";
 import { startHref } from "@/lib/questionnaire";
@@ -182,6 +183,9 @@ export function SetupFlow({ majorId, planSearch, settings, update, baseline, req
               );
             })}
           </ul>
+          <div className="mt-4">
+            <LanguageCheckbox checked={settings.hsLanguage} onChange={(hsLanguage) => update({ hsLanguage })} />
+          </div>
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
             <Link href={toStart(4)} className="text-sm text-muted hover:text-brand">← Back</Link>
             <button type="button" onClick={() => update({ setup: SETUP_STEPS.courses })} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">

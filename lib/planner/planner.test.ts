@@ -257,6 +257,19 @@ describe("AP credit", () => {
     expect(applyApCredit(exams, { "AP Calculus BC": 3 })).toMatchObject({ units: 4, ge: {} });
   });
 
+  it("credits only one option of an either/or grant toward GEs", () => {
+    expect(applyApCredit(exams, { "AP Calculus BC": 5 }).geCourses).toEqual(["MATH2A", "MATH2B"]);
+    expect(applyApCredit(exams, { "AP Calculus BC": 3 }).geCourses).toEqual(["MATH2A"]);
+  });
+
+  it("corrects the API with UCI's official AP chart", () => {
+    const european: ApExam = { name: "AP European History", catalogueName: null, rewards: [{ scores: [5], courses: { AND: [] }, units: 8, ge: { "GE-4": 3, "GE-8": 1 } }] };
+    const stats: ApExam = { name: "AP Statistics", catalogueName: null, rewards: [{ scores: [4, 5], courses: { AND: [{ AND: ["MGMT 7"] }, { OR: ["STATS 7", "STATS 8"] }] }, units: 4, ge: {} }] };
+    expect(applyApCredit([european], { "AP European History": 5 }).ge).toEqual({ "GE-4": 1, "GE-8": 1 });
+    expect(applyApCredit([stats], { "AP Statistics": 5 }).geCourses).toEqual(["STATS7"]);
+    expect(applyApCredit([stats], { "AP Statistics": 5 }).completed).toEqual(expect.arrayContaining(["STATS7", "MGMT7"]));
+  });
+
   it("drops credited courses and their prerequisites from the plan", () => {
     const catalog = catalogOf(course("MATH1B"), course("MATH2A", { prerequisiteTree: req("MATH1B") }), course("MATH2B", { prerequisiteTree: req("MATH2A") }), course("MATH2D", { prerequisiteTree: req("MATH2B") }));
     const credit = applyApCredit(exams, { "AP Calculus BC": 5 });

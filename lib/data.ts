@@ -6,7 +6,7 @@ import { encodeCourse, type IndexRow } from "@/lib/course-index";
 import { isUndeclared, UNDECLARED_ID } from "@/lib/majors";
 import type { GeCandidate, LiveSummary } from "@/lib/ge-recommend";
 import { buildPlan, type CatalogCourse } from "@/lib/planner";
-import type { ApExam } from "@/lib/planner/ap";
+import { withChartFixes, type ApExam } from "@/lib/planner/ap";
 import { normalizeCourseId } from "@/lib/planner/prereqs";
 import { offeredSeasons } from "@/lib/planner/schedule";
 import { SEASON_LETTER } from "@/lib/planner/types";
@@ -102,7 +102,7 @@ export async function getPlanPage(majorId: string): Promise<PlanPage | null> {
     major: { id: major.id, name: major.name, catalogYear: major.catalogYear, requirements: major.requirements },
     courses: [...subset.values()],
     details: Object.fromEntries(detailRows.map((r) => [r.id, { description: r.description, prerequisiteText: r.prerequisiteText }])),
-    apExams: exams,
+    apExams: exams.map(withChartFixes),
     majors: await getMajors(),
     dataUpdated: await (async () => {
       const [row] = await db.select({ at: sql<Date>`max(${courses.updatedAt})` }).from(courses);

@@ -8,6 +8,7 @@ export type PlanSettings = {
   maxUnits: number;
   taken: string[]; // course ids
   ap: Record<string, number>; // exam name -> score
+  hsLanguage: boolean; // three years of one language in high school, which satisfies GE VI
   added: { id: string; quarter: number }[]; // courses the student added (GEs or electives), by quarter index
   fill: boolean; // fill the rest of the 180 units with free-elective slots
   setup: number; // guided setup step being shown on the plan page (0 = none)
@@ -35,7 +36,7 @@ export function fromStanding(yearInCollege: number, startFallYear: number, start
 export const UNIT_CHOICES = [12, 13, 14, 15, 16, 17, 18, 19, 20];
 export const DEFAULT_MAX_UNITS = 16;
 
-export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, added: [], fill: false, setup: 0, unitsDone: 0, pace: "ontime", grad: ON_TIME, summer: false, sections: [] });
+export const defaultSettings = (entryYear: number): PlanSettings => ({ entryYear, firstQuarter: 0, maxUnits: DEFAULT_MAX_UNITS, taken: [], ap: {}, hsLanguage: false, added: [], fill: false, setup: 0, unitsDone: 0, pace: "ontime", grad: ON_TIME, summer: false, sections: [] });
 
 const int = (value: string | null, fallback: number, min: number, max: number) => {
   const n = Number(value);
@@ -56,6 +57,7 @@ export function parseSettings(search: string, defaultEntryYear: number): PlanSet
     maxUnits: int(params.get("units"), DEFAULT_MAX_UNITS, UNIT_CHOICES[0], UNIT_CHOICES.at(-1)!),
     taken: [...new Set((params.get("taken") ?? "").split(",").filter(Boolean))],
     ap,
+    hsLanguage: params.get("lang") === "1",
     added: (params.get("add") ?? params.get("ge") ?? "").split(",").flatMap((entry) => { // "ge" is the older name
       const [id, quarter] = entry.split("@");
       const q = Number(quarter);
@@ -83,6 +85,7 @@ export function serializeSettings(s: PlanSettings, defaultEntryYear: number): st
   if (s.taken.length) params.set("taken", [...s.taken].sort().join(","));
   const ap = Object.entries(s.ap).sort(([a], [b]) => a.localeCompare(b));
   if (ap.length) params.set("ap", ap.map(([name, score]) => `${name}:${score}`).join("|"));
+  if (s.hsLanguage) params.set("lang", "1");
   if (s.added.length) params.set("add", s.added.map((g) => `${g.id}@${g.quarter}`).join(","));
   if (s.fill) params.set("fill", "1");
   if (s.setup) params.set("setup", String(s.setup));
