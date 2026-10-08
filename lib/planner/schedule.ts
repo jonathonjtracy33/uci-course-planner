@@ -7,7 +7,6 @@ export type ScheduleOptions = {
   startYear: number;
   firstQuarter: number;
   maxUnitsPerQuarter: number;
-  reserved: Record<number, number>; // units already used in each quarter by student-added courses
   quarters: number;
   maxQuarters: number;
   offeredSince: number;
@@ -128,10 +127,8 @@ export function schedule(items: PlannedItem[], catalog: Catalog, opts: ScheduleO
         const group = coreqGroup(item);
         if (!group) continue;
         const units = group.reduce((sum, i) => sum + i.units, 0);
-        // Courses the student added count toward the limit too. A course bigger than the limit can
-        // still go in an otherwise empty quarter.
-        const used = quarter.units + (opts.reserved[q] ?? 0);
-        if (used > 0 && used + units > cap) continue;
+        // A course bigger than the limit can still go in an otherwise empty quarter.
+        if (quarter.units > 0 && quarter.units + units > cap) continue;
         for (const member of group) {
           quarter.items.push(member);
           placed.add(member.id);

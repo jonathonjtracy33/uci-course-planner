@@ -64,7 +64,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   // Courses the student added (GEs or electives). Ones in quarters before the plan starts count as taken.
   // GE data is small (~25 KB), so load it up front for the GE tools.
   const geCourses = useGeCourses(true);
-  const exploreData = useExploreCourses(view === "next");
+  const exploreData = useExploreCourses(view === "next" || view === "calendar");
   // Facts about any course: this major's data first, then the GE data (always loaded), then the
   // full index (loaded on demand).
   const factsOf = (id: string): CourseFacts | null => {
@@ -74,17 +74,14 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
     return g ? { code: g.code, title: g.title, units: g.units, ge: g.ge } : null;
   };
 
-  // Units each quarter already has from courses the student added, so major courses don't
-  // overload it. A course whose data hasn't loaded yet counts as a typical 4 units.
-  const reserved: Record<number, number> = {};
-  for (const a of settings.added) reserved[a.quarter] = (reserved[a.quarter] ?? 0) + (factsOf(a.id)?.units ?? 4);
+  // Courses the student adds go on top of the required ones (they never push a required course to a
+  // later quarter); a quarter over the unit limit is flagged instead.
   const plan = buildPlan(major.requirements, courses, {
     startYear: settings.entryYear,
     firstQuarter: settings.firstQuarter,
     maxUnitsPerQuarter: settings.maxUnits,
     quarters: settings.grad,
     summers: settings.summer,
-    reserved,
     completed: [...settings.taken, ...credit.completed],
     exams: credit.exams,
     offeredSince,
@@ -330,6 +327,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           <NextQuarter
             label={nextQuarter.label}
             courses={nextCourses}
+            maxUnits={settings.maxUnits}
             liveTerm={liveTerm}
             isFirstYear={settings.firstQuarter < 3}
             onPlanGes={autoPlanGes}
@@ -369,10 +367,23 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
         <div className="mt-4">
           <CalendarView
             quarterLabel={nextQuarter.label}
+            season={nextQuarter.season}
             liveTerm={liveTerm}
             courses={nextCourses.map((c) => ({ id: baseId(c.id), code: c.code, title: c.title, units: c.units }))}
             chosen={settings.sections}
             onChoose={(codes) => update({ sections: codes })}
+            search={{
+              index,
+              onSearchFocus: () => setWantIndex(true),
+              detailsOf: (id) => exploreData?.get(id) ?? geCourses?.get(id) ?? null,
+              student: studentBefore(nextQuarter.index),
+              standing: standingIn(nextQuarter.index),
+              owned: new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)]),
+              maxUnits: settings.maxUnits,
+              // added to the upcoming quarter, so it shows on the plan too
+              onAdd: (id) => update({ added: [...settings.added, { id, quarter: nextQuarter.index }] }),
+              onShowCourse: (id) => setPopover({ id, quarter: nextQuarter.index }),
+            }}
           />
         </div>
       )}
@@ -463,7 +474,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
               <div className={`grid gap-3 ${quarters.length === 4 ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}>
                 {quarters.map((q) => "past" in q
                   ? <PastQuarter key={q.index} index={q.index} entryYear={settings.entryYear} />
-                  : <QuarterCard key={q.index} quarter={q} units={quarterUnits(q)} electives={electives.get(q.index) ?? 0} lookup={lookup} roleOf={roleOf} onSelect={select} ge={geByQuarter.get(q.index) ?? []} geIssues={geIssues} onAddGe={() => setPicker({ quarter: q.index })} onAddCourse={() => setCourseDialog(q.index)} onRemoveGe={removeGe} onShowCourse={(id) => setPopover({ id, quarter: q.index })} />)}
+                  : <QuarterCard key={q.index} quarter={q} units={quarterUnits(q)} maxUnits={settings.maxUnits} electives={electives.get(q.index) ?? 0} lookup={lookup} roleOf={roleOf} onSelect={select} ge={geByQuarter.get(q.index) ?? []} geIssues={geIssues} onAddGe={() => setPicker({ quarter: q.index })} onAddCourse={() => setCourseDialog(q.index)} onRemoveGe={removeGe} onShowCourse={(id) => setPopover({ id, quarter: q.index })} />)}
               </div>
             </section>
           ))}
@@ -578,8 +589,8 @@ function PastQuarter({ index, entryYear }: { index: number; entryYear: number })
 
 type GeIssues = (g: GeItem) => { missing: Missing[]; restriction: RestrictionCheck } | null;
 
-function QuarterCard({ quarter, units, electives, lookup, roleOf, onSelect, ge, geIssues, onAddGe, onAddCourse, onRemoveGe, onShowCourse }: {
-  quarter: Quarter; units: number; electives: number; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void;
+function QuarterCard({ quarter, units, maxUnits, electives, lookup, roleOf, onSelect, ge, geIssues, onAddGe, onAddCourse, onRemoveGe, onShowCourse }: {
+  quarter: Quarter; units: number; maxUnits: number; electives: number; lookup: Lookup; roleOf: (id: string) => Role; onSelect: (id: string) => void;
   ge: GeItem[]; geIssues: GeIssues; onAddGe: () => void; onAddCourse: () => void; onRemoveGe: (g: GeItem) => void; onShowCourse: (id: string) => void;
 }) {
   const open = Math.max(0, FULL_LOAD - units);
@@ -614,6 +625,9 @@ function QuarterCard({ quarter, units, electives, lookup, roleOf, onSelect, ge, 
       </ul>
       {quarter.season !== "Summer" && units < FULL_TIME && (
         <p className="mt-2 text-[11px] text-warn-ink">Under {FULL_TIME} units (full-time)</p>
+      )}
+      {units > maxUnits && (
+        <p className="mt-2 text-[11px] font-medium text-red-600">Over your {maxUnits}-unit limit: remove a course or raise the limit</p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <button type="button" onClick={onAddGe} className="text-brand hover:underline">+ GE</button>

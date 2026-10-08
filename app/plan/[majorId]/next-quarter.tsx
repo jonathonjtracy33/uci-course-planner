@@ -15,8 +15,9 @@ const LINKS = {
 
 export type NextCourse = { id: string; code: string; title: string; units: number; kind: "major" | "prereq" | "added"; live?: LiveSummary };
 
-export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, onExplore, onCalendar, onRemove }: {
+export function NextQuarter({ label, courses, maxUnits, liveTerm, isFirstYear, onPlanGes, onExplore, onCalendar, onRemove }: {
   label: string;
+  maxUnits: number;
   liveTerm: string | null;
   onCalendar: () => void;
   onRemove: (id: string) => void; // only for courses the student added
@@ -34,6 +35,11 @@ export function NextQuarter({ label, courses, liveTerm, isFirstYear, onPlanGes, 
         <span className="text-xs text-muted">{units} units</span>
       </div>
 
+      {units > maxUnits && (
+        <p className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs font-medium text-red-700">
+          {units} units is over your {maxUnits}-unit limit. Remove a course, or raise the limit under Complete College Planner.
+        </p>
+      )}
       <p className="mt-1 text-xs text-muted">
         {posted
           ? <>Live seat counts from UCI&apos;s {label} Schedule of Classes, updated daily.</>

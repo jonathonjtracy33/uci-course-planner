@@ -182,12 +182,6 @@ describe("scheduling", () => {
     expect(Math.max(...plan.quarters.map((q) => q.units))).toBeLessThanOrEqual(8);
   });
 
-  it("counts courses the student added toward each quarter's unit limit", () => {
-    const catalog = catalogOf(...["A", "B", "C", "D"].map((id) => course(id)));
-    const plan = buildPlan([take("all", ["A", "B", "C", "D"])], catalog, { ...opts, maxUnitsPerQuarter: 16, reserved: { 0: 12 } });
-    expect(plan.quarters[0].units).toBe(4); // only 4 of 16 units were free in the first quarter
-  });
-
   it("places corequisites that require each other in the same quarter", () => {
     const catalog = catalogOf(
       course("LECTURE", { prerequisiteTree: req("LAB", true) }),

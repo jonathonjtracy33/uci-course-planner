@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { chooseSections, clock, conflicts, layoutLanes, toBlocks, type Section } from "@/lib/calendar";
-import { catalogueUrl } from "@/lib/links";
-import { fetchSections } from "@/lib/websoc";
+import { useEffect, useRef, useState } from "react";
+import { chooseSections, clock, conflicts, layoutLanes, toBlocks, type Block, type Section } from "@/lib/calendar";
+import type { GeCandidate } from "@/lib/ge-recommend";
+import { catalogueUrl, rateMyProfessorsUrl } from "@/lib/links";
+import type { Season } from "@/lib/planner";
+import type { StudentState } from "@/lib/prereq-status";
+import type { Standing } from "@/lib/restrictions";
+import { fetchGpa, fetchSections, type GpaInfo } from "@/lib/websoc";
+import { CalendarSearch } from "./calendar-search";
+import type { CourseIndex } from "./use-course-index";
+
+const RESTRICTION_CODES = "https://www.reg.uci.edu/enrollment/restrict_codes.html";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const START = 8 * 60; // 8am
@@ -16,17 +24,31 @@ export type CalendarCourse = { id: string; code: string; title: string; units: n
 // The upcoming quarter as a week, like AntAlmanac: one lecture (and discussion/lab) per course,
 // from UCI's live Schedule of Classes. Before UCI posts that quarter, the newest posted quarter's
 // times are shown as a preview.
-export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose }: {
+export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, onChoose, search }: {
   quarterLabel: string;
+  season: Season;
   liveTerm: string | null;
   courses: CalendarCourse[];
   chosen: string[]; // section codes the student picked
   onChoose: (codes: string[]) => void;
+  search: {
+    index: CourseIndex | null;
+    onSearchFocus: () => void;
+    detailsOf: (id: string) => GeCandidate | null;
+    student: StudentState;
+    standing: Standing;
+    owned: Set<string>;
+    maxUnits: number;
+    onAdd: (id: string) => void;
+    onShowCourse: (id: string) => void;
+  };
 }) {
   const posted = liveTerm === quarterLabel;
   const [preview, setPreview] = useState(false);
   const term = posted ? quarterLabel : preview ? liveTerm : null;
   const [loaded, setLoaded] = useState<{ key: string; sections: Record<string, Section[]> } | null>(null);
+  const [hover, setHover] = useState<{ slot: string; block: Block & { color: string }; pinned: boolean } | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const key = `${term}|${courses.map((c) => c.id).join(",")}`;
 
   useEffect(() => {
@@ -40,10 +62,17 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
     };
   }, [term, key, courses]);
 
+  const unitsPlanned = courses.reduce((s, c) => s + c.units, 0);
+  const searchBar = (blocks: Block[]) => (
+    <CalendarSearch {...search} quarterLabel={quarterLabel} season={season} postedTerm={posted ? quarterLabel : null} timesTerm={term} unitsPlanned={unitsPlanned} blocks={blocks} />
+  );
+
   if (!term) {
     return (
-      <section className="rounded-xl border border-border bg-surface p-6 text-sm">
-        <h2 className="text-base font-semibold">Weekly calendar for {quarterLabel}</h2>
+      <section className="rounded-xl border border-border bg-surface text-sm">
+        <h2 className="px-6 pt-6 text-base font-semibold">Weekly calendar for {quarterLabel}</h2>
+        <div className="mt-3">{searchBar([])}</div>
+        <div className="p-6 pt-4">
         <p className="mt-2 text-muted">
           UCI hasn&apos;t posted the {quarterLabel} Schedule of Classes yet. It usually comes out about 6 weeks before the quarter, and
           DegreePath picks it up the next night. Then you&apos;ll see real class times here and can choose your sections.
@@ -53,6 +82,7 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
             Preview with {liveTerm} times
           </button>
         )}
+        </div>
       </section>
     );
   }
@@ -63,6 +93,18 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
   const blocks = picks.flatMap((p) => toBlocks(p.course.id, p.course.code, p.picked).map((b) => ({ ...b, color: p.color })));
   const clashes = conflicts(blocks);
   const slot = (b: { section: Section; day: number; start: number }) => `${b.section.code}|${b.day}|${b.start}`;
+  const show = (b: Block & { color: string }) => {
+    keep();
+    setHover((h) => (h?.pinned ? h : { slot: slot(b), block: b, pinned: false }));
+  };
+  const keep = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+  };
+  // A short delay so the pointer can move from a class onto its card (to click links).
+  const hideSoon = () => {
+    keep();
+    hideTimer.current = setTimeout(() => setHover((h) => (h?.pinned ? h : null)), 200);
+  };
   const clashing = new Set(clashes.flatMap(([a, b]) => [slot(a), slot(b)]));
   const offList = picks.filter((p) => sections && p.all.length === 0);
   const unscheduledTimes = picks.flatMap((p) => p.picked.filter((s) => s.meetings.length === 0).map((s) => `${p.course.code} ${s.type}`));
@@ -82,8 +124,9 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
             {posted ? "Live from UCI's Schedule of Classes. Pick a section for each class; enroll in WebReg with the 5-digit codes." : `UCI hasn't posted ${quarterLabel} yet, so these are last term's times. Real ${quarterLabel} times will differ.`}
           </p>
         </div>
-        <span className="text-sm text-muted">{courses.reduce((s, c) => s + c.units, 0)} units</span>
+        <span className="text-sm text-muted">{unitsPlanned} units</span>
       </div>
+      <div className="pt-3">{searchBar(blocks)}</div>
 
       {clashes.length > 0 && (
         <p className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700">
@@ -103,9 +146,16 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
               </div>
             ))}
             {[0, 1, 2, 3, 4].flatMap((day) => layoutLanes(blocks.filter((b) => b.day === day && b.end > START && b.start < END))).map((b, i) => (
-              <div
+              <button
+                type="button"
                 key={`${b.section.code}-${b.day}-${i}`}
-                className={`absolute overflow-hidden rounded-md px-1.5 py-1 text-[10px] leading-tight text-white shadow-sm ${clashing.has(slot(b)) ? "ring-2 ring-red-500 ring-offset-1" : ""}`}
+                onMouseEnter={() => show(b)}
+                onMouseLeave={hideSoon}
+                onFocus={() => show(b)}
+                onBlur={hideSoon}
+                onClick={() => (hover?.slot === slot(b) && hover.pinned ? setHover(null) : setHover({ slot: slot(b), block: b, pinned: true }))}
+                aria-label={`${b.label} ${b.section.type} ${clock(b.start)} to ${clock(b.end)}. Show details`}
+                className={`absolute overflow-hidden rounded-md px-1.5 py-1 text-left text-[10px] leading-tight text-white shadow-sm focus-visible:outline-2 focus-visible:outline-foreground ${clashing.has(slot(b)) ? "ring-2 ring-red-500 ring-offset-1" : ""}`}
                 style={{
                   top: 24 + (Math.max(b.start, START) - START) * PX_PER_MIN,
                   height: Math.max(18, (Math.min(b.end, END) - Math.max(b.start, START)) * PX_PER_MIN - 2),
@@ -114,13 +164,25 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
                   width: `calc((100% - 3rem) / 5 / ${b.lanes} - 4px)`,
                   background: b.color,
                 }}
-                title={`${b.label} ${b.section.type} ${b.section.code} · ${clock(b.start)}–${clock(b.end)} ${b.place}`}
               >
                 <p className="font-semibold">{b.label} <span className="font-normal opacity-90">{b.section.type}</span></p>
                 <p className="opacity-90">{clock(b.start)}–{clock(b.end)}</p>
                 {b.place && <p className="opacity-90">{b.place}</p>}
-              </div>
+              </button>
             ))}
+            {hover && (
+              <ClassCard
+                block={hover.block}
+                course={courses.find((c) => c.id === hover.block.courseId)}
+                style={{
+                  top: 24 + (Math.max(hover.block.start, START) - START) * PX_PER_MIN,
+                  ...(hover.block.day >= 3 ? { right: `calc((100% - 3rem) * ${5 - hover.block.day} / 5 + 4px)` } : { left: `calc(3rem + (100% - 3rem) * ${hover.block.day + 1} / 5 + 4px)` }),
+                }}
+                onEnter={keep}
+                onLeave={hideSoon}
+                onClose={() => setHover(null)}
+              />
+            )}
           </div>
           {!sections && <p className="mt-2 text-xs text-muted">Loading class times…</p>}
         </div>
@@ -168,5 +230,77 @@ export function CalendarView({ quarterLabel, liveTerm, courses, chosen, onChoose
         </p>
       )}
     </section>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = { OPEN: "text-emerald-700", FULL: "text-red-700", Waitl: "text-warn-ink", NewOnly: "text-warn-ink" };
+const DAY_NAMES = ["M", "Tu", "W", "Th", "F", "Sa", "Su"];
+
+// Everything from the class's WebSoc row, plus UCI's average GPA and a link to the instructor on
+// RateMyProfessors (a link only: RMP's terms don't allow copying their ratings).
+function ClassCard({ block, course, style, onEnter, onLeave, onClose }: {
+  block: Block & { color: string };
+  course?: CalendarCourse;
+  style: React.CSSProperties;
+  onEnter: () => void;
+  onLeave: () => void;
+  onClose: () => void;
+}) {
+  const s = block.section;
+  const instructor = s.instructors[0];
+  const [gpa, setGpa] = useState<{ key: string; info: GpaInfo | null } | null>(null);
+  const key = `${block.label}|${instructor ?? ""}`;
+  useEffect(() => {
+    let cancelled = false;
+    fetchGpa(block.label, instructor).then((info) => !cancelled && setGpa({ key, info }));
+    return () => {
+      cancelled = true;
+    };
+  }, [block.label, instructor, key]);
+  const g = gpa?.key === key ? gpa : null;
+
+  const row = (label: string, value: React.ReactNode) => (
+    <div className="grid grid-cols-[6.5rem_1fr] gap-2 py-0.5">
+      <dt className="text-muted">{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+  return (
+    <div
+      role="dialog"
+      aria-label={`${block.label} ${s.type} details`}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      className="absolute z-20 w-72 rounded-xl border border-border bg-surface p-3 text-left text-xs text-foreground shadow-xl"
+      style={style}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <a href={catalogueUrl(block.label)} target="_blank" rel="noreferrer" className="font-mono text-sm font-semibold hover:text-brand hover:underline" style={{ color: block.color }}>{block.label}</a>
+          {course && <p className="text-muted">{course.title}</p>}
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close" className="rounded px-1 text-base leading-none text-muted hover:text-foreground">×</button>
+      </div>
+      <dl className="mt-2 border-t border-border pt-2">
+        {row("Code", <span className="font-mono font-semibold">{s.code}</span>)}
+        {row("Type", `${s.type}${s.num ? ` · Sec ${s.num}` : ""}${s.units ? ` · ${s.units} units` : ""}`)}
+        {row("Instructor", instructor ? (
+          <span>
+            {s.instructors.join(", ")}
+            <a href={rateMyProfessorsUrl(instructor)} target="_blank" rel="noreferrer" className="mt-0.5 flex items-center gap-1 font-medium text-brand hover:underline" title="Opens RateMyProfessors">
+              <span aria-hidden className="text-amber-500">★</span> See ratings on RateMyProfessors ↗
+            </a>
+          </span>
+        ) : "Staff")}
+        {row("Avg GPA", !g ? "…" : g.info ? `${g.info.gpa.toFixed(2)}${g.info.byInstructor ? ` with ${instructor?.split(",")[0]}` : " (all instructors)"} · ${g.info.sections} past section${g.info.sections === 1 ? "" : "s"}${g.info.asCode ? ` as ${g.info.asCode}` : ""}` : "No grade data yet")}
+        {row("Times", s.meetings.length ? s.meetings.map((m) => `${m.days.map((d) => DAY_NAMES[d]).join("")} ${clock(m.start)}–${clock(m.end)}`).join(", ") : "TBA")}
+        {row("Place", s.meetings.map((m) => m.place).filter(Boolean).join(", ") || "TBA")}
+        {s.capacity !== undefined && row("Enrollment", `${s.enrolled} / ${s.capacity}${s.waitlist ? ` · WL ${s.waitlist}` : ""}`)}
+        {row("Status", <span className={`font-semibold ${STATUS_TONE[s.status] ?? ""}`}>{s.status === "Waitl" ? "Waitlist" : s.status === "NewOnly" ? "New students only" : s.status}</span>)}
+        {s.restrictions && row("Restrictions", <a href={RESTRICTION_CODES} target="_blank" rel="noreferrer" className="text-brand hover:underline">{s.restrictions} ↗</a>)}
+        {s.finalExam && row("Final", s.finalExam)}
+        {s.syllabus && row("Syllabus", <a href={s.syllabus} target="_blank" rel="noreferrer" className="text-brand hover:underline">Open ↗</a>)}
+      </dl>
+    </div>
   );
 }

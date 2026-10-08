@@ -9,6 +9,15 @@ export type Section = {
   status: string; // OPEN, FULL, Waitl, NewOnly
   seatsLeft: number;
   meetings: Meeting[]; // empty = time to be announced / online
+  // The rest of a WebSoc row, for the calendar's hover card. Optional so simple tests stay short.
+  num?: string; // section letter or number: "A", "1"
+  units?: string;
+  enrolled?: number;
+  capacity?: number;
+  waitlist?: string; // "0 / 60", or "" when there's no waitlist
+  restrictions?: string; // codes, e.g. "A and L"
+  finalExam?: string; // "Tue Dec 8, 10:30am–12:30pm"
+  syllabus?: string; // URL
 };
 
 const DAY_TOKENS: [string, number][] = [["Tu", 1], ["Th", 3], ["Sa", 5], ["Su", 6], ["M", 0], ["W", 2], ["F", 4]];

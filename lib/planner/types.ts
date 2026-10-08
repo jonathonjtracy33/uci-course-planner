@@ -48,7 +48,6 @@ export type PlanOptions = {
   completed?: string[]; // courses already taken (or transferred in)
   exams?: Record<string, number>; // exam name -> score, e.g. { "AP CALCULUS BC": 5 }
   maxUnitsPerQuarter?: number; // whole-quarter limit, default 16
-  reserved?: Record<number, number>; // units per quarter index already used by courses the student added
   balance?: boolean; // spread major courses evenly to leave room for GEs; default true
   quarters?: number; // graduate within this many quarters of starting, default 12 (4 years)
   summers?: boolean; // also plan summer sessions (for graduating early)
