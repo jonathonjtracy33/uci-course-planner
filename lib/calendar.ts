@@ -1,6 +1,8 @@
 // Weekly-calendar helpers: UCI's meeting days ("MWF", "TuTh"), picking one section of each type for
 // a course, and spotting time conflicts. Times are minutes after midnight.
 
+export type FinalExam = { month: number; day: number; weekday: string; start: number; end: number; place: string }; // month: 0 = Jan
+
 export type Meeting = { days: number[]; start: number; end: number; place: string }; // days: 0 = Monday
 export type Section = {
   code: string; // 5-digit code for WebReg
@@ -17,6 +19,7 @@ export type Section = {
   waitlist?: string; // "0 / 60", or "" when there's no waitlist
   restrictions?: string; // codes, e.g. "A and L"
   finalExam?: string; // "Tue Dec 8, 10:30am–12:30pm"
+  final?: FinalExam; // the same, as data (for the finals schedule)
   syllabus?: string; // URL
 };
 
@@ -95,4 +98,23 @@ export function layoutLanes<T extends { start: number; end: number }>(blocks: T[
   }
   if (group.length) close();
   return out;
+}
+
+// Final exams for the chosen sections, in date order, plus pairs that overlap.
+export type FinalRow = { courseId: string; label: string; final: FinalExam | null; note: string };
+export function finalsSchedule(courses: { courseId: string; label: string; sections: Section[] }[]) {
+  const rows: FinalRow[] = courses.map((c) => {
+    const withFinal = c.sections.find((s) => s.final);
+    const note = c.sections.map((s) => s.finalExam).find(Boolean) ?? "Final not announced yet";
+    return { courseId: c.courseId, label: c.label, final: withFinal?.final ?? null, note };
+  });
+  const dated = rows.filter((r) => r.final).sort((a, b) => a.final!.month - b.final!.month || a.final!.day - b.final!.day || a.final!.start - b.final!.start);
+  const clashes: [FinalRow, FinalRow][] = [];
+  for (let i = 0; i < dated.length; i++)
+    for (let j = i + 1; j < dated.length; j++) {
+      const a = dated[i].final!;
+      const b = dated[j].final!;
+      if (a.month === b.month && a.day === b.day && a.start < b.end && b.start < a.end) clashes.push([dated[i], dated[j]]);
+    }
+  return { dated, undated: rows.filter((r) => !r.final), clashes };
 }

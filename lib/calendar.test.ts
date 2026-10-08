@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseSections, clock, conflicts, layoutLanes, parseDays, toBlocks, type Section } from "./calendar";
+import { chooseSections, clock, conflicts, finalsSchedule, layoutLanes, parseDays, toBlocks, type Section } from "./calendar";
 
 const sec = (code: string, type: string, status: string, days = "MWF", start = 600, end = 650): Section =>
   ({ code, type, instructors: [], status, seatsLeft: status === "FULL" ? 0 : 5, meetings: [{ days: parseDays(days), start, end, place: "" }] });
@@ -36,5 +36,18 @@ describe("calendar", () => {
     const laid = layoutLanes([{ id: "a", start: 540, end: 590 }, { id: "b", start: 540, end: 590 }, { id: "c", start: 660, end: 710 }]);
     const by = Object.fromEntries(laid.map((b) => [b.id, [b.lane, b.lanes]]));
     expect(by).toEqual({ a: [0, 2], b: [1, 2], c: [0, 1] });
+  });
+
+  it("orders finals by date and flags ones at the same time", () => {
+    const withFinal = (code: string, day: number, start: number): Section => ({ ...sec(code, "Lec", "OPEN"), final: { month: 2, day, weekday: "", start, end: start + 120, place: "" } });
+    const { dated, undated, clashes } = finalsSchedule([
+      { courseId: "B", label: "B", sections: [withFinal("2", 15, 600)] },
+      { courseId: "A", label: "A", sections: [withFinal("1", 13, 480)] },
+      { courseId: "C", label: "C", sections: [withFinal("3", 15, 660)] },
+      { courseId: "D", label: "D", sections: [sec("4", "Lec", "OPEN")] },
+    ]);
+    expect(dated.map((r) => r.label)).toEqual(["A", "B", "C"]);
+    expect(undated.map((r) => r.label)).toEqual(["D"]);
+    expect(clashes.map(([x, y]) => [x.label, y.label])).toEqual([["B", "C"]]);
   });
 });

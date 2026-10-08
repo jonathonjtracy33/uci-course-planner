@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import type { ApExam, CourseGrant } from "@/lib/planner/ap";
 import type { PlannedItem } from "@/lib/planner";
-import { ON_TIME, SETUP_STEPS, TOTAL_STEPS, type PlanSettings } from "@/lib/plan-settings";
+import { Stepper } from "@/app/components/stepper";
+import { ON_TIME, SETUP_STEPS, type PlanSettings } from "@/lib/plan-settings";
+import { startHref } from "@/lib/questionnaire";
 import { termAt } from "@/lib/planner/types";
 import { CourseSearch } from "./course-search";
 import { UnitsDoneInput } from "./units-done-input";
@@ -37,7 +40,9 @@ function earns(exam: ApExam, score: number): string {
   return parts.join(" · ");
 }
 
-export function SetupFlow({ settings, update, baseline, requiresOf, apExams, index, onSearchFocus, factsOf }: {
+export function SetupFlow({ majorId, planSearch, settings, update, baseline, requiresOf, apExams, index, onSearchFocus, factsOf }: {
+  majorId: string;
+  planSearch: string; // the plan's current settings as a query string
   settings: PlanSettings;
   update: (change: Partial<PlanSettings>) => void;
   baseline: { item: PlannedItem; quarter: number }[]; // the major's courses in usual order, before anything is marked done
@@ -48,6 +53,9 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
   factsOf: (id: string) => CourseFacts | null;
 }) {
   const step = settings.setup;
+  // Steps 1-4 live on /start; go there with every answer filled in.
+  const toStart = (n: number) =>
+    startHref(n, { yr: Math.min(4, Math.floor(settings.firstQuarter / 3) + 1), t: termAt(settings.firstQuarter, settings.entryYear).label, major: majorId }, planSearch);
   const codeOf = (id: string) => factsOf(id)?.code ?? id;
   const taken = new Set(settings.taken);
   const done = () => {
@@ -74,10 +82,7 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
 
   return (
     <section className="rounded-2xl border border-brand/40 bg-surface p-5 shadow-sm sm:p-6" aria-labelledby="setup-title">
-      <p className="text-sm font-medium text-brand">Step {step} of {TOTAL_STEPS}</p>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-border" aria-hidden>
-        <div className="h-full rounded-full bg-brand" style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
-      </div>
+      <Stepper step={step} targetFor={(n) => (n <= 4 ? toStart(n) : () => update({ setup: n }))} />
 
       {step === SETUP_STEPS.courses && (
         <>
@@ -177,7 +182,7 @@ export function SetupFlow({ settings, update, baseline, requiresOf, apExams, ind
             })}
           </ul>
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-            <span />
+            <Link href={toStart(4)} className="text-sm text-muted hover:text-brand">← Back</Link>
             <button type="button" onClick={() => update({ setup: SETUP_STEPS.courses })} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
               Next: courses you&apos;ve taken →
             </button>

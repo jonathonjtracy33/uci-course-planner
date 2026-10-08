@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fillElectives, planGes } from "@/lib/auto-plan";
@@ -7,7 +8,8 @@ import type { PlanPage, PlannerCourse } from "@/lib/data";
 import { isUndeclared } from "@/lib/majors";
 import { GE_CATEGORIES, geProgress, UNITS_TO_GRADUATE, type GeCourse } from "@/lib/ge";
 import { buildPlan, SEASONS, type PlannedItem, type Quarter } from "@/lib/planner";
-import { ON_TIME, SETUP_STEPS } from "@/lib/plan-settings";
+import { ON_TIME, serializeSettings } from "@/lib/plan-settings";
+import { startHref } from "@/lib/questionnaire";
 import { termAt, termIndexes } from "@/lib/planner/types";
 import { applyApCredit } from "@/lib/planner/ap";
 import { unitsOf } from "@/lib/planner/select";
@@ -19,7 +21,9 @@ import { AddCourseDialog } from "./add-course-dialog";
 import { CoursePopover } from "./course-popover";
 import { CalendarView } from "./calendar-view";
 import { CompletedSection } from "./completed-section";
+import { DegreeProgress } from "./degree-progress";
 import { ExplorePanel } from "./explore-panel";
+import { QuarterCheckIn } from "./quarter-check-in";
 import { NeedsAttention } from "./needs-attention";
 import { GePicker } from "./ge-picker";
 import { MissingList } from "./missing-list";
@@ -254,6 +258,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
       <div className="mx-auto max-w-3xl">
         <h1 className="mb-4 text-2xl font-semibold tracking-tight sm:text-3xl">{shortName(major.name)}</h1>
         <SetupFlow
+          majorId={major.id}
+          planSearch={serializeSettings(settings, entryYear)}
           settings={settings}
           update={update}
           baseline={baseline}
@@ -285,7 +291,12 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
             {" · "}graduating {termAt(settings.grad - 1, settings.entryYear).label}
             {settings.grad < ON_TIME ? " (early, with summer classes)" : settings.grad > ON_TIME ? " (taking a little longer)" : ""}
             {" · "}
-            <button type="button" onClick={() => update({ setup: SETUP_STEPS.ap })} className="font-medium text-brand hover:underline">Edit my answers</button>
+            <Link
+              href={startHref(1, { yr: Math.min(4, Math.floor(settings.firstQuarter / 3) + 1), t: termAt(settings.firstQuarter, settings.entryYear).label, major: major.id }, serializeSettings(settings, entryYear))}
+              className="font-medium text-brand hover:underline"
+            >
+              Edit my answers
+            </Link>
           </p>
           <label className="mt-2 flex items-center gap-2 text-xs text-muted">
             {undeclared ? "Try a major:" : "Change major:"}
@@ -306,6 +317,32 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           <Stat label="Per quarter" value={unknownUnits && !index ? "…" : Math.ceil(unitsNeeded / quartersLeft)} hint={`over ${quartersLeft} ${settings.summer ? "terms incl. summers" : "quarters"}`} />
         </dl>
       </header>
+
+      {!(unknownUnits && !index) && (
+        <DegreeProgress done={unitsDone} upcoming={nextQuarter ? quarterUnits(nextQuarter) : 0} upcomingLabel={nextQuarter?.label ?? ""} undeclared={undeclared} />
+      )}
+
+      {nextQuarter && (
+        <QuarterCheckIn
+          label={nextQuarter.label}
+          courses={nextCourses.map((c) => ({ id: baseId(c.id), code: c.code, title: c.title, units: c.units }))}
+          onSubmit={(passed, notPassed) => {
+            // Passed classes become completed and the plan moves on a quarter. Added classes that
+            // weren't passed move to the new upcoming quarter; required ones get rescheduled.
+            const nextIndex = Math.min(settings.firstQuarter + 1, 11);
+            const passedUnits = passed.reduce((sum, id) => sum + (factsOf(id)?.units ?? 0), 0);
+            update({
+              taken: [...new Set([...settings.taken, ...passed])],
+              added: settings.added
+                .filter((a) => !(a.quarter === nextQuarter.index && passed.includes(a.id)))
+                .map((a) => (a.quarter === nextQuarter.index && notPassed.includes(a.id) ? { ...a, quarter: nextIndex } : a)),
+              firstQuarter: nextIndex,
+              sections: [],
+              unitsDone: settings.unitsDone ? settings.unitsDone + passedUnits : 0,
+            });
+          }}
+        />
+      )}
 
       <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl bg-subtle p-1" role="tablist" aria-label="View">
         {([["next", nextQuarter ? `Upcoming quarter · ${nextQuarter.label}` : "Upcoming quarter"], ["calendar", "Calendar"], ["complete", "Complete College Planner"]] as const).map(([key, label]) => (
@@ -335,6 +372,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
             onExplore={() => document.getElementById("explore-title")?.scrollIntoView({ behavior: "smooth" })}
             onCalendar={() => setView("calendar")}
           />
+          <GePanel progress={ge} onFind={findGe} onAutoPlan={autoPlanGes} autoReady={!!geCourses} note={autoNote} />
           <NeedsAttention
             quarter={nextQuarter}
             geCourses={geCourses}

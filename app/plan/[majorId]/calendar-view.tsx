@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { chooseSections, clock, conflicts, layoutLanes, toBlocks, type Block, type Section } from "@/lib/calendar";
+import { chooseSections, clock, conflicts, finalsSchedule, layoutLanes, toBlocks, type Block, type Section } from "@/lib/calendar";
 import type { GeCandidate } from "@/lib/ge-recommend";
 import { catalogueUrl, rateMyProfessorsUrl } from "@/lib/links";
 import type { Season } from "@/lib/planner";
 import type { StudentState } from "@/lib/prereq-status";
 import type { Standing } from "@/lib/restrictions";
+import { fetchTermDates, formatDate } from "@/lib/term-dates";
 import { fetchGpa, fetchSections, type GpaInfo } from "@/lib/websoc";
 import { CalendarSearch } from "./calendar-search";
 import type { CourseIndex } from "./use-course-index";
@@ -47,6 +48,17 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
   const [preview, setPreview] = useState(false);
   const term = posted ? quarterLabel : preview ? liveTerm : null;
   const [loaded, setLoaded] = useState<{ key: string; sections: Record<string, Section[]> } | null>(null);
+  const [mode, setMode] = useState<"classes" | "finals">("classes");
+  const [postsOn, setPostsOn] = useState<{ label: string; date: string | null } | null>(null);
+  useEffect(() => {
+    if (posted) return;
+    let cancelled = false;
+    fetchTermDates(quarterLabel).then((d) => !cancelled && setPostsOn({ label: quarterLabel, date: d?.socAvailable ?? null }));
+    return () => {
+      cancelled = true;
+    };
+  }, [posted, quarterLabel]);
+  const postDate = postsOn?.label === quarterLabel ? postsOn.date : null;
   const [hover, setHover] = useState<{ slot: string; block: Block & { color: string }; pinned: boolean } | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const key = `${term}|${courses.map((c) => c.id).join(",")}`;
@@ -74,7 +86,8 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
         <div className="mt-3">{searchBar([])}</div>
         <div className="p-6 pt-4">
         <p className="mt-2 text-muted">
-          UCI hasn&apos;t posted the {quarterLabel} Schedule of Classes yet. It usually comes out about 6 weeks before the quarter, and
+          UCI hasn&apos;t posted the {quarterLabel} Schedule of Classes yet.{" "}
+          {postDate ? <>UCI&apos;s calendar says it comes out <span className="font-medium text-foreground">{formatDate(postDate)}</span>, and</> : <>It usually comes out about 6 weeks before the quarter, and</>}{" "}
           DegreePath picks it up the next night. Then you&apos;ll see real class times here and can choose your sections.
         </p>
         {liveTerm && (
@@ -128,15 +141,34 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
       </div>
       <div className="pt-3">{searchBar(blocks)}</div>
 
-      {clashes.length > 0 && (
+      <div className="flex px-4 pt-4">
+        <div className="inline-flex rounded-lg bg-subtle p-1 text-sm" role="tablist" aria-label="Schedule view">
+          {([["classes", "Course schedule"], ["finals", "Finals schedule"]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={mode === key}
+              onClick={() => setMode(key)}
+              className={`rounded-md px-4 py-1.5 font-medium ${mode === key ? "bg-surface text-brand shadow-sm" : "text-muted hover:text-foreground"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === "classes" && clashes.length > 0 && (
         <p className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700">
           ⚠ Time conflict: {[...new Set(clashes.map(([a, b]) => `${a.label} ${a.section.type} and ${b.label} ${b.section.type}`))].join("; ")}. Pick a different section below.
         </p>
       )}
 
       <div className="grid gap-4 p-4 lg:grid-cols-[1fr_18rem]">
+        {mode === "finals" && <FinalsList picks={picks} term={term} loading={!sections} />}
+
         {/* Week grid */}
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto ${mode === "finals" ? "hidden" : ""}`}>
           <div className="relative grid min-w-[36rem] grid-cols-[3rem_repeat(5,1fr)]" style={{ height: (END - START) * PX_PER_MIN + 24 }}>
             <div />
             {DAYS.map((d) => <div key={d} className="text-center text-xs font-semibold text-muted">{d}</div>)}
@@ -301,6 +333,60 @@ function ClassCard({ block, course, style, onEnter, onLeave, onClose }: {
         {s.finalExam && row("Final", s.finalExam)}
         {s.syllabus && row("Syllabus", <a href={s.syllabus} target="_blank" rel="noreferrer" className="text-brand hover:underline">Open ↗</a>)}
       </dl>
+    </div>
+  );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Finals week for the chosen sections, grouped by day, with exams at the same time flagged.
+function FinalsList({ picks, term, loading }: {
+  picks: { course: CalendarCourse; color: string; picked: Section[] }[];
+  term: string;
+  loading: boolean;
+}) {
+  const { dated, undated, clashes } = finalsSchedule(picks.map((p) => ({ courseId: p.course.id, label: p.course.code, sections: p.picked })));
+  const colorOf = new Map(picks.map((p) => [p.course.id, p.color]));
+  const titleOf = new Map(picks.map((p) => [p.course.id, p.course.title]));
+  const clashing = new Set(clashes.flatMap(([a, b]) => [a.courseId, b.courseId]));
+  const days = new Map<string, typeof dated>();
+  for (const r of dated) {
+    const key = `${r.final!.weekday} ${MONTHS[r.final!.month]} ${r.final!.day}`;
+    days.set(key, [...(days.get(key) ?? []), r]);
+  }
+  if (loading) return <p className="text-sm text-muted">Loading finals…</p>;
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted">Final exams for the sections you picked{term ? ` (${term})` : ""}. Finals follow the lecture, so changing a lecture section can change its final.</p>
+      {clashes.length > 0 && (
+        <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700">
+          ⚠ Finals at the same time: {clashes.map(([a, b]) => `${a.label} and ${b.label}`).join("; ")}. Ask your instructors about a make-up, or pick other sections.
+        </p>
+      )}
+      {[...days].map(([day, rows]) => (
+        <section key={day} aria-label={day}>
+          <h3 className="text-sm font-semibold">{day}</h3>
+          <ul className="mt-2 space-y-2">
+            {rows.map((r) => (
+              <li key={r.courseId} className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-sm ${clashing.has(r.courseId) ? "border-red-500/60 bg-red-500/5" : "border-border"}`}>
+                <span aria-hidden className="h-8 w-1 shrink-0 rounded-full" style={{ background: colorOf.get(r.courseId) }} />
+                <span className="w-36 shrink-0 tabular-nums">{clock(r.final!.start)}–{clock(r.final!.end)}</span>
+                <span className="min-w-0 flex-1 truncate"><span className="font-mono text-xs font-semibold">{r.label}</span> · {titleOf.get(r.courseId)}</span>
+                <span className="shrink-0 text-muted">{r.final!.place || "Room TBA"}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {undated.length > 0 && (
+        <section aria-label="No scheduled final">
+          <h3 className="text-sm font-semibold text-muted">No scheduled final</h3>
+          <ul className="mt-2 space-y-1 text-sm">
+            {undated.map((r) => <li key={r.courseId}><span className="font-mono text-xs font-semibold">{r.label}</span> · {r.note}</li>)}
+          </ul>
+        </section>
+      )}
+      {!dated.length && !undated.length && <p className="text-sm text-muted">No classes yet. Add some with the search above.</p>}
     </div>
   );
 }

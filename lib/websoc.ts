@@ -13,7 +13,7 @@ type Raw = {
   sectionCode: string; sectionType: string; sectionNum: string; units: string; status: string; maxCapacity: string;
   numCurrentlyEnrolled: { totalEnrolled: string }; instructors: string[];
   numOnWaitlist: string; numWaitlistCap: string; restrictions: string; webURL: string;
-  finalExam?: { examStatus: string; dayOfWeek?: string; month?: number; day?: number; startTime?: Time; endTime?: Time };
+  finalExam?: { examStatus: string; dayOfWeek?: string; month?: number; day?: number; startTime?: Time; endTime?: Time; bldg?: string[] };
   meetings: { timeIsTBA: boolean; days?: string; bldg?: string[]; startTime?: { hour: number; minute: number }; endTime?: { hour: number; minute: number } }[];
 };
 
@@ -46,6 +46,9 @@ export function fetchSections(term: string, code: string): Promise<Section[]> {
           waitlist: s.numWaitlistCap && s.numWaitlistCap !== "0" ? `${s.numOnWaitlist || 0} / ${s.numWaitlistCap}` : "",
           restrictions: s.restrictions,
           finalExam: finalExam(s.finalExam),
+          final: s.finalExam?.examStatus === "SCHEDULED_FINAL" && s.finalExam.startTime && s.finalExam.endTime && s.finalExam.month !== undefined
+            ? { month: s.finalExam.month, day: s.finalExam.day ?? 0, weekday: s.finalExam.dayOfWeek ?? "", start: minutesOf(s.finalExam.startTime), end: minutesOf(s.finalExam.endTime), place: s.finalExam.bldg?.[0] ?? "" }
+            : undefined,
           syllabus: s.webURL || undefined,
         })))
       .catch(() => {
