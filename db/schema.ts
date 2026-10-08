@@ -70,3 +70,12 @@ export const offerings = pgTable("offerings", {
   sections: jsonb("sections").$type<LiveSection[]>().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.term, t.courseId] })]);
+
+// A student's plan, saved so their "My plan link" works on any device or deployment.
+// The id is random and unguessable; the plan itself is just the settings query string.
+export const savedPlans = pgTable("saved_plans", {
+  id: text("id").primaryKey(),
+  path: text("path").notNull(), // "/plan/BS-19H"
+  search: text("search").notNull(), // "?entry=2025&taken=..."
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

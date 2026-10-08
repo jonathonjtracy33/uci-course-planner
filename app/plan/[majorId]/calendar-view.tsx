@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { chooseSections, clock, conflicts, finalsSchedule, layoutLanes, toBlocks, type Block, type Section } from "@/lib/calendar";
+import { chooseProfessor, chooseSections, mainTypeOf, clock, conflicts, finalsSchedule, layoutLanes, professorsOf, sectionsFor, toBlocks, type Block, type Section } from "@/lib/calendar";
 import type { GeCandidate } from "@/lib/ge-recommend";
 import { catalogueUrl, rateMyProfessorsUrl } from "@/lib/links";
 import type { Season } from "@/lib/planner";
@@ -49,6 +49,8 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
   const term = posted ? quarterLabel : preview ? liveTerm : null;
   const [loaded, setLoaded] = useState<{ key: string; sections: Record<string, Section[]> } | null>(null);
   const [mode, setMode] = useState<"classes" | "finals">("classes");
+  // The professor the student picked for each course (a lecture can be co-taught by several).
+  const [profChoice, setProfChoice] = useState<Record<string, string>>({});
   const [postsOn, setPostsOn] = useState<{ label: string; date: string | null } | null>(null);
   useEffect(() => {
     if (posted) return;
@@ -121,6 +123,15 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
   const clashing = new Set(clashes.flatMap(([a, b]) => [slot(a), slot(b)]));
   const offList = picks.filter((p) => sections && p.all.length === 0);
   const unscheduledTimes = picks.flatMap((p) => p.picked.filter((s) => s.meetings.length === 0).map((s) => `${p.course.code} ${s.type}`));
+
+  // The professor shown for a course: the one the student picked, if their chosen lecture includes
+  // them; otherwise whoever teaches the chosen lecture.
+  const profOf = (p: { course: CalendarCourse; all: Section[]; picked: Section[] }) => {
+    const main = p.picked.find((s) => s.type === mainTypeOf(p.all));
+    const profs = professorsOf(p.all);
+    const mine = profChoice[p.course.id];
+    return mine && main?.instructors.includes(mine) ? mine : main?.instructors.find((i) => profs.includes(i)) ?? null;
+  };
 
   // Choosing a section replaces any other section of that type for the same course.
   const pick = (type: string, code: string, all: Section[]) => {
@@ -230,8 +241,34 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
                 </a>
               </div>
               {sections && p.all.length === 0 && <p className="mt-1 text-xs text-red-600">Not on the {term} schedule.</p>}
+              {(() => {
+                // The professor of the chosen main section (usually the lecture).
+                const profs = professorsOf(p.all);
+                const prof = profOf(p);
+                return profs.length > 0 && (
+                  <label className="mt-2 block text-xs text-muted">
+                    Professor
+                    <select
+                      value={prof ?? ""}
+                      onChange={(e) => {
+                        const codes = new Set(p.all.map((s) => s.code));
+                        setProfChoice((c) => ({ ...c, [p.course.id]: e.target.value }));
+                        onChoose([...chosen.filter((c) => !codes.has(c)), ...chooseProfessor(p.all, e.target.value, new Set(chosen))]);
+                      }}
+                      className="mt-0.5 w-full rounded-md border border-border bg-subtle px-2 py-1 text-xs font-medium text-foreground"
+                    >
+                      {profs.map((name) => {
+                        const theirs = p.all.filter((s) => s.type === mainTypeOf(p.all) && s.instructors.includes(name));
+                        const open = theirs.reduce((n, s) => n + (s.status === "OPEN" ? s.seatsLeft : 0), 0);
+                        return <option key={name} value={name}>{name} · {theirs.length} section{theirs.length === 1 ? "" : "s"} · {open} open seats</option>;
+                      })}
+                    </select>
+                  </label>
+                );
+              })()}
               {[...new Set(p.all.map((s) => s.type))].map((type) => {
                 const current = p.picked.find((s) => s.type === type);
+                const prof = profOf(p);
                 return (
                   <label key={type} className="mt-2 block text-xs text-muted">
                     {type}
@@ -240,7 +277,7 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
                       onChange={(e) => pick(type, e.target.value, p.all)}
                       className="mt-0.5 w-full rounded-md border border-border bg-subtle px-2 py-1 text-xs text-foreground"
                     >
-                      {p.all.filter((s) => s.type === type).map((s) => (
+                      {sectionsFor(p.all, type, prof).map((s) => (
                         <option key={s.code} value={s.code}>
                           {s.code} · {s.meetings[0] ? `${s.meetings.map((m) => m.days.map((d) => DAYS[d] ?? "").join("/")).join(" ")} ${clock(s.meetings[0].start)}` : "TBA"}
                           {" · "}{s.status === "OPEN" ? `${s.seatsLeft} open` : s.status}{s.instructors[0] ? ` · ${s.instructors[0]}` : ""}
@@ -363,6 +400,7 @@ function FinalsList({ picks, term, loading }: {
           ⚠ Finals at the same time: {clashes.map(([a, b]) => `${a.label} and ${b.label}`).join("; ")}. Ask your instructors about a make-up, or pick other sections.
         </p>
       )}
+      {dated.length > 0 && <FinalsGrid days={[...days]} colorOf={colorOf} clashing={clashing} />}
       {[...days].map(([day, rows]) => (
         <section key={day} aria-label={day}>
           <h3 className="text-sm font-semibold">{day}</h3>
@@ -387,6 +425,50 @@ function FinalsList({ picks, term, loading }: {
         </section>
       )}
       {!dated.length && !undated.length && <p className="text-sm text-muted">No classes yet. Add some with the search above.</p>}
+    </div>
+  );
+}
+
+// Finals week as a calendar: one column per exam day, blocks by time.
+function FinalsGrid({ days, colorOf, clashing }: {
+  days: [string, ReturnType<typeof finalsSchedule>["dated"]][];
+  colorOf: Map<string, string>;
+  clashing: Set<string>;
+}) {
+  const rows = days.flatMap(([, r]) => r);
+  const start = Math.min(START, ...rows.map((r) => Math.floor(r.final!.start / 60) * 60));
+  const end = Math.max(START + 10 * 60, ...rows.map((r) => Math.ceil(r.final!.end / 60) * 60));
+  const px = 0.6;
+  return (
+    <div className="overflow-x-auto">
+      <div className="relative grid" style={{ gridTemplateColumns: `3rem repeat(${days.length}, minmax(7rem, 1fr))`, height: (end - start) * px + 24, minWidth: `${3 + days.length * 7}rem` }}>
+        <div />
+        {days.map(([day]) => <div key={day} className="text-center text-xs font-semibold text-muted">{day}</div>)}
+        {Array.from({ length: (end - start) / 60 + 1 }, (_, h) => (
+          <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-border" style={{ top: 24 + h * 60 * px }}>
+            <span className="absolute -top-2 left-0 bg-surface pr-1 text-[10px] text-muted">{clock(start + h * 60).replace(":00", "")}</span>
+          </div>
+        ))}
+        {days.flatMap(([day, list], col) =>
+          layoutLanes(list.map((r) => ({ ...r, start: r.final!.start, end: r.final!.end }))).map((r) => (
+            <div
+              key={`${day}-${r.courseId}`}
+              className={`absolute overflow-hidden rounded-md px-1.5 py-1 text-[10px] leading-tight text-white shadow-sm ${clashing.has(r.courseId) ? "ring-2 ring-red-500 ring-offset-1" : ""}`}
+              style={{
+                top: 24 + (r.start - start) * px,
+                height: Math.max(20, (r.end - r.start) * px - 2),
+                left: `calc(3rem + (100% - 3rem) * ${col} / ${days.length} + (100% - 3rem) / ${days.length} * ${r.lane} / ${r.lanes} + 2px)`,
+                width: `calc((100% - 3rem) / ${days.length} / ${r.lanes} - 4px)`,
+                background: colorOf.get(r.courseId),
+              }}
+            >
+              <p className="font-semibold">{r.label} final</p>
+              <p className="opacity-90">{clock(r.start)}–{clock(r.end)}</p>
+              {r.final!.place && <p className="opacity-90">{r.final!.place}</p>}
+            </div>
+          )),
+        )}
+      </div>
     </div>
   );
 }

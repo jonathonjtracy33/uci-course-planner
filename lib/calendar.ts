@@ -118,3 +118,33 @@ export function finalsSchedule(courses: { courseId: string; label: string; secti
     }
   return { dated, undated: rows.filter((r) => !r.final), clashes };
 }
+
+// A course's main section type: lectures when it has any (UCI sometimes lists a discussion first),
+// otherwise whatever it has (a lab-only or seminar course).
+export const mainTypeOf = (sections: Section[]) => (sections.some((s) => s.type === "Lec") ? "Lec" : sections[0]?.type);
+
+// Professors teaching a course's main sections, in listed order.
+export function professorsOf(sections: Section[]): string[] {
+  const mainType = mainTypeOf(sections);
+  return [...new Set(sections.filter((s) => s.type === mainType).flatMap((s) => s.instructors))];
+}
+
+// Sections of one type a student can pick once they've chosen a professor: that professor's, if
+// they teach any of this type; otherwise all of them (e.g. labs run by TAs).
+export function sectionsFor(sections: Section[], type: string, professor: string | null): Section[] {
+  const ofType = sections.filter((s) => s.type === type);
+  if (!professor) return ofType;
+  const theirs = ofType.filter((s) => s.instructors.includes(professor));
+  return theirs.length ? theirs : ofType;
+}
+
+// Choosing a professor: their most enrollable section of each type they teach; other types keep
+// the student's current pick. Returns the course's new section codes.
+export function chooseProfessor(sections: Section[], professor: string, current: Set<string>): string[] {
+  const types = [...new Set(sections.map((s) => s.type))];
+  return types.flatMap((type) => {
+    const options = sectionsFor(sections, type, professor);
+    const keep = options.find((s) => current.has(s.code));
+    return [(keep ?? chooseSections(options, new Set())[0]).code];
+  });
+}

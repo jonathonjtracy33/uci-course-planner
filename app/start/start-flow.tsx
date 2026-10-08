@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
+import { ContinuePlan } from "@/app/components/continue-plan";
 import { MajorSearch } from "@/app/components/major-search";
 import { Stepper } from "@/app/components/stepper";
 import type { MajorSummary } from "@/lib/data";
@@ -118,6 +119,12 @@ export function StartFlow({ majors }: { majors: MajorSummary[] }) {
           return currentMajor && plan ? toPlan(currentMajor, n) : null;
         }}
       />
+
+      {step === 1 && !search.includes("major=") && (
+        <div className="mt-6">
+          <ContinuePlan majorNames={Object.fromEntries(majors.map((m) => [m.id, m.name]))} />
+        </div>
+      )}
 
       {step === 1 && (
         <section aria-labelledby="college-q" className="mt-8">

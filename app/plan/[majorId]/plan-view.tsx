@@ -8,7 +8,8 @@ import type { PlanPage, PlannerCourse } from "@/lib/data";
 import { isUndeclared } from "@/lib/majors";
 import { GE_CATEGORIES, geProgress, UNITS_TO_GRADUATE, type GeCourse } from "@/lib/ge";
 import { buildPlan, SEASONS, type PlannedItem, type Quarter } from "@/lib/planner";
-import { ON_TIME, serializeSettings } from "@/lib/plan-settings";
+import { serializeSettings } from "@/lib/plan-settings";
+import { paceTarget, unitsAhead } from "@/lib/pace";
 import { startHref } from "@/lib/questionnaire";
 import { termAt, termIndexes } from "@/lib/planner/types";
 import { applyApCredit } from "@/lib/planner/ap";
@@ -22,6 +23,8 @@ import { CoursePopover } from "./course-popover";
 import { CalendarView } from "./calendar-view";
 import { CompletedSection } from "./completed-section";
 import { DegreeProgress } from "./degree-progress";
+import { MyPlanLink } from "./my-plan-link";
+import { PaceNote } from "./pace-note";
 import { ExplorePanel } from "./explore-panel";
 import { QuarterCheckIn } from "./quarter-check-in";
 import { NeedsAttention } from "./needs-attention";
@@ -78,18 +81,6 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
     return g ? { code: g.code, title: g.title, units: g.units, ge: g.ge } : null;
   };
 
-  // Courses the student adds go on top of the required ones (they never push a required course to a
-  // later quarter); a quarter over the unit limit is flagged instead.
-  const plan = buildPlan(major.requirements, courses, {
-    startYear: settings.entryYear,
-    firstQuarter: settings.firstQuarter,
-    maxUnitsPerQuarter: settings.maxUnits,
-    quarters: settings.grad,
-    summers: settings.summer,
-    completed: [...settings.taken, ...credit.completed],
-    exams: credit.exams,
-    offeredSince,
-  });
   const lookup: Lookup = { courses, details };
   const geItems: GeItem[] = settings.added.map((g) => ({ ...g, facts: factsOf(g.id) }));
   const geByQuarter = new Map<number, GeItem[]>();
@@ -103,8 +94,28 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   // use whichever is larger.
   const unitsDone = Math.max(settings.unitsDone, doneIds.reduce((sum, id) => sum + (factsOf(id)?.units ?? 0), 0) + credit.units);
   const unitsNeeded = Math.max(0, UNITS_TO_GRADUATE - unitsDone);
-  // Terms left before graduation, counting summer sessions when the student plans to use them.
-  const quartersLeft = Math.max(1, termIndexes(settings.firstQuarter, settings.grad, settings.summer).length);
+
+  // The student's pace sets the graduation target. Courses they add go on top of the required ones
+  // (they never push a required course to a later quarter); a quarter over the limit is flagged.
+  const target = paceTarget(settings.pace, { grad: settings.grad, firstQuarter: settings.firstQuarter, unitsLeft: unitsNeeded });
+  const planWith = (summers: boolean) => buildPlan(major.requirements, courses, {
+    startYear: settings.entryYear,
+    firstQuarter: settings.firstQuarter,
+    maxUnitsPerQuarter: settings.maxUnits,
+    quarters: target.grad,
+    summers: summers || settings.summer,
+    completed: [...settings.taken, ...credit.completed],
+    exams: credit.exams,
+    offeredSince,
+  });
+  // On time but behind: add summer classes only if the plan can't finish in 4 years without them.
+  const regular = planWith(target.summers === true);
+  const needsSummers = target.summers === "if-needed" && !settings.summer && (regular.quarters.at(-1)?.index ?? 0) >= target.grad;
+  const plan = needsSummers ? planWith(true) : regular;
+  const summersOn = target.summers === true || needsSummers || settings.summer;
+  const gradAt = target.grad;
+  // Terms left before graduation, counting summer sessions when the plan uses them.
+  const quartersLeft = Math.max(1, termIndexes(settings.firstQuarter, gradAt, summersOn).length);
 
   const geKnown: GeCourse[] = [
     ...[...doneIds, ...credit.completed].map((id): GeCourse => ({ id, ge: factsOf(id)?.ge ?? [], status: "done" })),
@@ -150,7 +161,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   }, []);
 
   // Group by academic year; quarters before the plan starts show as done.
-  const lastIndex = plan.quarters.at(-1)?.index ?? settings.grad - 1;
+  const lastIndex = plan.quarters.at(-1)?.index ?? gradAt - 1;
   const years = Array.from({ length: Math.floor(lastIndex / 3) + 1 }, (_, y) => {
     const regular = [0, 1, 2].map((s) => plan.quarters.find((q) => q.index === y * 3 + s) ?? { index: y * 3 + s, past: true as const });
     const summer = plan.quarters.find((q) => q.index === y * 3 + 2.5);
@@ -158,7 +169,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
   });
   const select = (id: string) => setSelectedId((cur) => (cur === id ? null : id));
   const addedUnits = (q: number) => (geByQuarter.get(q) ?? []).reduce((sum, g) => sum + (g.facts?.units ?? 0), 0);
-  const planned = plan.quarters.filter((q) => q.index < settings.grad);
+  const planned = plan.quarters.filter((q) => q.index < gradAt);
 
   // Major + GE + added courses rarely reach 180 units on their own. Show the gap, and optionally
   // fill it with free-elective slots in the lightest quarters.
@@ -288,8 +299,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           <p className="mt-2 text-sm">
             <span className="font-medium">{["1st", "2nd", "3rd", "4th"][Math.min(3, Math.floor(settings.firstQuarter / 3))]} year</span>
             {" · "}planning {termAt(settings.firstQuarter, settings.entryYear).label}
-            {" · "}graduating {termAt(settings.grad - 1, settings.entryYear).label}
-            {settings.grad < ON_TIME ? " (early, with summer classes)" : settings.grad > ON_TIME ? " (taking a little longer)" : ""}
+            {" · "}graduating {termAt(gradAt - 1, settings.entryYear).label}
+            {settings.pace === "early" ? " (early, with summer classes)" : settings.pace === "balanced" ? " (balanced pace)" : needsSummers ? " (on time, with summer classes)" : " (on time)"}
             {" · "}
             <Link
               href={startHref(1, { yr: Math.min(4, Math.floor(settings.firstQuarter / 3) + 1), t: termAt(settings.firstQuarter, settings.entryYear).label, major: major.id }, serializeSettings(settings, entryYear))}
@@ -297,6 +308,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
             >
               Edit my answers
             </Link>
+            {" · "}
+            <MyPlanLink />
           </p>
           <label className="mt-2 flex items-center gap-2 text-xs text-muted">
             {undeclared ? "Try a major:" : "Change major:"}
@@ -314,7 +327,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
         <dl className="flex gap-6 text-sm">
           <Stat label="Units completed" value={unknownUnits && !index ? "…" : unitsDone} />
           <Stat label="Units needed" value={unknownUnits && !index ? "…" : unitsNeeded} hint={`of ${UNITS_TO_GRADUATE} to graduate`} />
-          <Stat label="Per quarter" value={unknownUnits && !index ? "…" : Math.ceil(unitsNeeded / quartersLeft)} hint={`over ${quartersLeft} ${settings.summer ? "terms incl. summers" : "quarters"}`} />
+          <Stat label="Per quarter" value={unknownUnits && !index ? "…" : Math.ceil(unitsNeeded / quartersLeft)} hint={`over ${quartersLeft} ${summersOn ? "terms incl. summers" : "quarters"}`} />
         </dl>
       </header>
 
@@ -343,6 +356,19 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           }}
         />
       )}
+
+      <div className="mt-4">
+        <PaceNote
+          pace={settings.pace}
+          ahead={unitsAhead(unitsDone, settings.firstQuarter)}
+          gradLabel={termAt(gradAt - 1, settings.entryYear).label}
+          summersAdded={needsSummers}
+          summerLabels={plan.quarters.filter((q) => q.season === "Summer").map((q) => q.label)}
+          unitsPerQuarter={Math.ceil(unitsNeeded / quartersLeft)}
+          maxUnits={settings.maxUnits}
+          onSwitch={(pace) => update(pace === "early" ? { pace, grad: Math.max(settings.firstQuarter + 2, 11) } : { pace })}
+        />
+      </div>
 
       <div className="mt-6 grid grid-cols-3 gap-1 rounded-xl bg-subtle p-1" role="tablist" aria-label="View">
         {([["next", nextQuarter ? `Upcoming quarter · ${nextQuarter.label}` : "Upcoming quarter"], ["calendar", "Calendar"], ["complete", "Complete College Planner"]] as const).map(([key, label]) => (
@@ -507,7 +533,7 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
           {years.map((quarters, y) => (
             <section key={y} aria-labelledby={`year-${y}`}>
               <h2 id={`year-${y}`} className="mb-2 text-sm font-semibold text-muted">
-                Year {y + 1}{y * 3 >= settings.grad && " (after your graduation goal)"}
+                Year {y + 1}{y * 3 >= gradAt && " (after your graduation goal)"}
               </h2>
               <div className={`grid gap-3 ${quarters.length === 4 ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}>
                 {quarters.map((q) => "past" in q

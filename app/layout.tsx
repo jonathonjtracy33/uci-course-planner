@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Dancing_Script, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { DeploymentNotice, ProductionHostProvider } from "./components/site-host";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${script.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
+        <ProductionHostProvider value={process.env.VERCEL_PROJECT_PRODUCTION_URL ?? null}>
+        <DeploymentNotice />
         <header className="border-b border-border bg-surface">
           <div className="mx-auto flex h-14 max-w-6xl items-center px-4">
             <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
@@ -42,6 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           DegreePath is a student project, not affiliated with or endorsed by the University of California. Course data from the{" "}
           <a className="underline hover:text-foreground" href="https://anteaterapi.com">Anteater API</a>. Always confirm your plan with an academic counselor.
         </footer>
+        </ProductionHostProvider>
       </body>
     </html>
   );

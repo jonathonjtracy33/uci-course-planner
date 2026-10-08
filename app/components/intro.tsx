@@ -61,6 +61,12 @@ export function Intro({ majorNames }: { majorNames: Record<string, string> }) {
             <ContinuePlan majorNames={majorNames} />
           </div>
         </div>
+        <p className="intro-after mx-auto mt-8 max-w-lg rounded-xl border border-border bg-subtle px-4 py-3 text-sm text-muted" style={{ "--delay": "5.3s" } as React.CSSProperties}>
+          <span className="font-medium text-foreground">Transferring from a community college or another school?</span>{" "}
+          See which of your courses count at UCI on{" "}
+          <a href="https://assist.org/" target="_blank" rel="noreferrer" className="font-medium text-brand underline">ASSIST.org ↗</a>
+          {" "}(California&apos;s official transfer-credit site), then add the matching UCI courses in step 6 of Build My Plan.
+        </p>
       </div>
     </section>
   );

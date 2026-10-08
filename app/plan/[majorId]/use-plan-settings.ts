@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { parseSettings, serializeSettings, type PlanSettings } from "@/lib/plan-settings";
-import { loadPlan, savePlan } from "@/lib/saved-plan";
+import { restorePlan, savePlan } from "@/lib/saved-plan";
 
 const CHANGE = "degreepath:settings";
 
@@ -25,10 +25,15 @@ export function usePlanSettings(defaultEntryYear: number) {
 
   useEffect(() => {
     if (window.location.search) return;
-    const saved = loadPlan();
-    if (!saved) return;
-    window.history.replaceState(null, "", `${window.location.pathname}${saved.search}`);
-    window.dispatchEvent(new Event(CHANGE));
+    let cancelled = false;
+    restorePlan().then((saved) => {
+      if (cancelled || !saved || window.location.search) return;
+      window.history.replaceState(null, "", `${window.location.pathname}${saved.search}`);
+      window.dispatchEvent(new Event(CHANGE));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const update = (change: Partial<PlanSettings>) => {

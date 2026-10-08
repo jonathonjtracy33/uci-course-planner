@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseSections, clock, conflicts, finalsSchedule, layoutLanes, parseDays, toBlocks, type Section } from "./calendar";
+import { chooseProfessor, chooseSections, clock, conflicts, finalsSchedule, layoutLanes, parseDays, professorsOf, sectionsFor, toBlocks, type Section } from "./calendar";
 
 const sec = (code: string, type: string, status: string, days = "MWF", start = 600, end = 650): Section =>
   ({ code, type, instructors: [], status, seatsLeft: status === "FULL" ? 0 : 5, meetings: [{ days: parseDays(days), start, end, place: "" }] });
@@ -49,5 +49,21 @@ describe("calendar", () => {
     expect(dated.map((r) => r.label)).toEqual(["A", "B", "C"]);
     expect(undated.map((r) => r.label)).toEqual(["D"]);
     expect(clashes.map(([x, y]) => [x.label, y.label])).toEqual([["B", "C"]]);
+  });
+
+  it("lists professors and narrows sections to the one chosen", () => {
+    const by = (code: string, type: string, who: string, status = "OPEN"): Section => ({ ...sec(code, type, status), instructors: [who] });
+    const sections = [by("1", "Lec", "SMITH, A.", "FULL"), by("2", "Lec", "LEE, B."), by("3", "Lec", "SMITH, A."), by("4", "Dis", "SMITH, A."), by("5", "Dis", "LEE, B."), by("6", "Lab", "STAFF")];
+    expect(professorsOf(sections)).toEqual(["SMITH, A.", "LEE, B."]);
+    expect(sectionsFor(sections, "Lec", "SMITH, A.").map((s) => s.code)).toEqual(["1", "3"]);
+    expect(sectionsFor(sections, "Lab", "SMITH, A.").map((s) => s.code)).toEqual(["6"]); // no labs of theirs: all labs
+    expect(chooseProfessor(sections, "SMITH, A.", new Set(["2", "5", "6"]))).toEqual(["3", "4", "6"]); // most open lecture of theirs
+  });
+
+  it("takes professors from the lectures even when a discussion is listed first", () => {
+    const by = (code: string, type: string, who: string): Section => ({ ...sec(code, type, "OPEN"), instructors: [who] });
+    const sections = [by("1", "Dis", "TA, ONE"), by("2", "Lec", "GILLEN, D."), by("3", "Lec", "ZHU, P."), by("4", "Dis", "TA, TWO")];
+    expect(professorsOf(sections)).toEqual(["GILLEN, D.", "ZHU, P."]);
+    expect(chooseProfessor(sections, "GILLEN, D.", new Set(["3", "4"]))).toEqual(["4", "2"]); // keeps the chosen discussion
   });
 });

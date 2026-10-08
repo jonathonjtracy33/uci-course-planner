@@ -58,8 +58,9 @@ export function SetupFlow({ majorId, planSearch, settings, update, baseline, req
     startHref(n, { yr: Math.min(4, Math.floor(settings.firstQuarter / 3) + 1), t: termAt(settings.firstQuarter, settings.entryYear).label, major: majorId }, planSearch);
   const codeOf = (id: string) => factsOf(id)?.code ?? id;
   const taken = new Set(settings.taken);
-  const done = () => {
-    update({ setup: 0 });
+  // Finish the questionnaire (in one update, so any last change isn't lost).
+  const done = (change: Partial<PlanSettings> = {}) => {
+    update({ ...change, setup: 0 });
     window.scrollTo({ top: 0 });
   };
 
@@ -195,62 +196,58 @@ export function SetupFlow({ majorId, planSearch, settings, update, baseline, req
   );
 }
 
-// When to graduate: on time (end of year 4), early with summer classes, or later with lighter
-// quarters. The only question with a Skip button: skipping means on time.
-function GraduationStep({ settings, update, onDone }: { settings: PlanSettings; update: (c: Partial<PlanSettings>) => void; onDone: () => void }) {
+// When to graduate: on time (4 years: lighter if ahead, summers if behind), early (pick a quarter,
+// with summer classes), or balanced (a steady load, even past 4 years). Skip means balanced.
+function GraduationStep({ settings, update, onDone }: { settings: PlanSettings; update: (c: Partial<PlanSettings>) => void; onDone: (change?: Partial<PlanSettings>) => void }) {
   const label = (grad: number) => termAt(grad - 1, settings.entryYear).label; // the last quarter
   const left = (grad: number) => grad - settings.firstQuarter;
-  const choice = settings.grad < ON_TIME ? "early" : settings.grad > ON_TIME ? "longer" : "on-time";
   const early = [11, 10, 9].filter((g) => left(g) >= 2);
-  const option = (key: string, title: string, detail: string, onPick: () => void) => (
+  const option = (pace: PlanSettings["pace"], title: string, detail: string, onPick: () => void) => (
     <button
       type="button"
       role="radio"
-      aria-checked={choice === key}
+      aria-checked={settings.pace === pace}
       onClick={onPick}
-      className={`rounded-xl border px-4 py-3 text-left ${choice === key ? "border-brand bg-brand-soft ring-2 ring-brand/30" : "border-border bg-surface hover:border-brand"}`}
+      className={`rounded-xl border px-4 py-3 text-left ${settings.pace === pace ? "border-brand bg-brand-soft ring-2 ring-brand/30" : "border-border bg-surface hover:border-brand"}`}
     >
       <span className="block font-medium">{title}</span>
       <span className="block text-sm text-muted">{detail}</span>
     </button>
   );
-  const sub = (options: number[], extra: (g: number) => string) => (
-    <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Graduation quarter">
-      {options.map((g) => (
-        <button
-          key={g}
-          type="button"
-          role="radio"
-          aria-checked={settings.grad === g}
-          onClick={() => update({ grad: g, summer: g < ON_TIME })}
-          className={`rounded-full border px-4 py-1.5 text-sm ${settings.grad === g ? "border-brand bg-brand text-white" : "border-border bg-surface hover:border-brand"}`}
-        >
-          {label(g)} <span className="opacity-80">· {extra(g)}</span>
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <>
-      <h2 id="setup-title" className="mt-6 text-xl font-semibold tracking-tight sm:text-2xl">When do you want to graduate?</h2>
+      <h2 id="setup-title" className="mt-6 text-xl font-semibold tracking-tight sm:text-2xl">How do you want to pace your degree?</h2>
       <p className="mt-1 text-sm text-muted">This sets how many classes go in each quarter. You can change it any time.</p>
-      <div className="mt-5 grid gap-2" role="radiogroup" aria-label="Graduation goal">
-        {option("on-time", "On time", `Graduate ${label(ON_TIME)}: ${left(ON_TIME)} quarters from now, a normal load each quarter.`, () => update({ grad: ON_TIME, summer: false }))}
-        {early.length > 0 && option("early", "Early, with summer classes", "Heavier quarters plus summer sessions, so you finish sooner.", () => update({ grad: early[0], summer: true }))}
-        {option("longer", "Taking longer is fine", "Lighter quarters, more time for work, research or a minor.", () => update({ grad: 15, summer: false }))}
+      <div className="mt-5 grid gap-2" role="radiogroup" aria-label="Pace">
+        {option("ontime", "On time", `Graduate ${label(ON_TIME)}, 4 years from your first Fall. Ahead? You'll get lighter quarters. Behind? We'll add summer classes to catch up.`, () => update({ pace: "ontime", grad: ON_TIME, summer: false }))}
+        {early.length > 0 && option("early", "Early", "Finish sooner with summer classes and heavier quarters. We'll show you the steps.", () => update({ pace: "early", grad: early[0], summer: false }))}
+        {option("balanced", "Balanced", "A steady, manageable load each quarter (about 14 units), even if that takes a little longer than 4 years.", () => update({ pace: "balanced", summer: false }))}
       </div>
-      {choice === "early" && sub(early, (g) => (ON_TIME - g === 3 ? "a year early" : `${ON_TIME - g} quarter${ON_TIME - g === 1 ? "" : "s"} early`))}
-      {choice === "longer" && sub([13, 14, 15], (g) => (g - ON_TIME === 3 ? "one extra year" : `${g - ON_TIME} extra quarter${g - ON_TIME === 1 ? "" : "s"}`))}
-      {choice === "early" && <p className="mt-3 text-xs text-muted">Summer sessions are added to your plan with courses UCI actually offers in summer. Check the warnings on your plan: some majors can&apos;t finish early.</p>}
+      {settings.pace === "early" && (
+        <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Graduation quarter">
+          {early.map((g) => (
+            <button
+              key={g}
+              type="button"
+              role="radio"
+              aria-checked={settings.grad === g}
+              onClick={() => update({ grad: g })}
+              className={`rounded-full border px-4 py-1.5 text-sm ${settings.grad === g ? "border-brand bg-brand text-white" : "border-border bg-surface hover:border-brand"}`}
+            >
+              {label(g)} <span className="opacity-80">· {ON_TIME - g === 3 ? "a year early" : `${ON_TIME - g} quarter${ON_TIME - g === 1 ? "" : "s"} early`}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={() => update({ setup: SETUP_STEPS.courses })} className="text-sm text-muted hover:text-brand">← Back</button>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => { update({ grad: ON_TIME, summer: false }); onDone(); }} className="rounded-xl px-4 py-2.5 text-sm text-muted hover:text-foreground">
+          <button type="button" onClick={() => onDone({ pace: "balanced", summer: false })} className="rounded-xl px-4 py-2.5 text-sm text-muted hover:text-foreground" title="Skipping gives you a balanced pace">
             Skip
           </button>
-          <button type="button" onClick={onDone} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
+          <button type="button" onClick={() => onDone()} className="rounded-xl bg-brand px-5 py-2.5 font-medium text-white hover:brightness-110">
             See my plan →
           </button>
         </div>
