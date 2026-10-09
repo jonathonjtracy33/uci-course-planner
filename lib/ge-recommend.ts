@@ -37,7 +37,7 @@ export type Recommendation = {
 const numeral = (code: string) => GE_CATEGORIES.find((c) => c.code === code)?.numeral ?? code;
 
 // Categories (by code) that still need courses, counting Category V's total as well.
-function openNeeds(progress: GeProgress): Map<string, number> {
+export function openNeeds(progress: GeProgress): Map<string, number> {
   const open = new Map<string, number>();
   for (const c of GE_CATEGORIES) {
     const p = progress[c.code];
@@ -48,7 +48,7 @@ function openNeeds(progress: GeProgress): Map<string, number> {
   return open;
 }
 
-function fills(course: GeCandidate, open: Map<string, number>): string[] {
+export function fills(course: GeCandidate, open: Map<string, number>): string[] {
   const out = course.ge.filter((g) => g !== "GE-5A" && g !== "GE-5B" && (open.get(g) ?? 0) > 0);
   // A course in both Va and Vb fills one of them (and counts toward the V total).
   const v = ["GE-5A", "GE-5B"].filter((g) => course.ge.includes(g) && (open.get(g) ?? 0) > 0);

@@ -79,7 +79,7 @@ export function NextQuarter({ label, courses, maxUnits, liveTerm, isFirstYear, o
 
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
         <button type="button" onClick={onCalendar} className="text-sm font-medium text-brand hover:underline">See it as a weekly calendar →</button>
-        <button type="button" onClick={onExplore} className="text-sm font-medium text-brand hover:underline">Browse GEs and electives you can take in {label} ↓</button>
+        <button type="button" onClick={onExplore} className="text-sm font-medium text-brand hover:underline">Browse available GEs for {label} ↓</button>
       </div>
 
       <details className="mt-4 rounded-lg bg-brand-soft px-3 py-2 text-sm" open={isFirstYear}>

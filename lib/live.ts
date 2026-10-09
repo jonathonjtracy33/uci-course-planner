@@ -20,11 +20,12 @@ export function toLiveSection(s: ApiWebsocSection): LiveSection {
 
 const RANK: Record<string, number> = { OPEN: 3, NewOnly: 2, Waitl: 1, FULL: 0 };
 
-// A course's "main" sections are the first section type listed (usually lectures); students
-// enroll in one of those plus any discussion or lab that goes with it.
+// A course's "main" sections are its lectures (or, with no lectures, the first section type
+// listed); students enroll in one of those plus any discussion or lab that goes with it. Some
+// courses list a discussion first, so "first listed" alone would rate seats by the discussions.
 export function summarize(course: ApiWebsocCourse) {
   const sections = course.sections.map(toLiveSection);
-  const mainType = sections[0]?.type;
+  const mainType = sections.some((s) => s.type === "Lec") ? "Lec" : sections[0]?.type;
   const main = sections.filter((s) => s.type === mainType);
   const status = main.reduce((best, s) => ((RANK[s.status] ?? 0) > (RANK[best] ?? 0) ? s.status : best), main[0]?.status ?? "FULL");
   return {

@@ -20,14 +20,13 @@ import { courseStatus, type Missing, type StudentState } from "@/lib/prereq-stat
 import { checkRestriction, type RestrictionCheck } from "@/lib/restrictions";
 import { AddCourseDialog } from "./add-course-dialog";
 import { CoursePopover } from "./course-popover";
+import { AvailableGes } from "./available-ges";
 import { CalendarView } from "./calendar-view";
 import { CompletedSection } from "./completed-section";
 import { DegreeProgress } from "./degree-progress";
 import { MyPlanLink } from "./my-plan-link";
 import { PaceNote } from "./pace-note";
-import { ExplorePanel } from "./explore-panel";
 import { QuarterCheckIn } from "./quarter-check-in";
-import { NeedsAttention } from "./needs-attention";
 import { GePicker } from "./ge-picker";
 import { MissingList } from "./missing-list";
 import { NextQuarter, type NextCourse } from "./next-quarter";
@@ -397,34 +396,22 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
             isFirstYear={settings.firstQuarter < 3}
             onPlanGes={autoPlanGes}
             onRemove={(id) => update({ added: settings.added.filter((a) => !(a.id === id && a.quarter === nextQuarter.index)) })}
-            onExplore={() => document.getElementById("explore-title")?.scrollIntoView({ behavior: "smooth" })}
+            onExplore={() => document.getElementById("available-ges")?.scrollIntoView({ behavior: "smooth" })}
             onCalendar={() => setView("calendar")}
           />
           <GePanel progress={ge} onFind={findGe} onAutoPlan={autoPlanGes} autoReady={!!geCourses} note={autoNote} />
-          <NeedsAttention
+          <AvailableGes
             quarter={nextQuarter}
             geCourses={geCourses}
             progress={ge}
             student={studentBefore(nextQuarter.index)}
             standing={standingIn(nextQuarter.index)}
             openUnits={Math.max(0, FULL_LOAD - quarterUnits(nextQuarter))}
-            exclude={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
+            owned={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
             liveTerm={liveTerm}
             onAdd={(id) => update({ added: [...settings.added, { id, quarter: nextQuarter.index }] })}
             onMore={() => setPicker({ quarter: nextQuarter.index })}
             onShowCourse={(id) => setPopover({ id, quarter: nextQuarter.index })}
-          />
-          <ExplorePanel
-            quarters={planned.map((q) => ({ index: q.index, label: q.label, season: q.season, units: quarterUnits(q) }))}
-            courses={exploreData}
-            progress={ge}
-            studentBefore={studentBefore}
-            standingIn={standingIn}
-            owned={new Set([...settings.taken, ...credit.completed, ...settings.added.map((g) => g.id), ...[...items.keys()].map(baseId)])}
-            liveTerm={liveTerm}
-            lowerDivisionFirst={settings.firstQuarter < 6}
-            onAdd={(id, quarter) => update({ added: [...settings.added, { id, quarter }] })}
-            onShowCourse={(id, quarter) => setPopover({ id, quarter })}
           />
         </div>
       )}
