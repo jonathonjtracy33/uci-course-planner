@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useSyncExternalStore } from "react";
+import { SITE_NAME } from "@/lib/site";
 
 // The site's main address (e.g. "uci-course-planner.vercel.app"), from Vercel at build time.
 const ProductionHost = createContext<string | null>(null);
@@ -19,7 +20,7 @@ export function DeploymentNotice() {
     <div className="bg-warn-soft px-4 py-2 text-center text-sm text-warn-ink">
       This is a one-off deployment address, so your saved plan isn&apos;t here.{" "}
       <a href={`https://${production}${typeof window !== "undefined" ? window.location.pathname : ""}`} className="font-semibold underline">
-        Open DegreePath at {production}
+        Open {SITE_NAME} at {production}
       </a>
     </div>
   );

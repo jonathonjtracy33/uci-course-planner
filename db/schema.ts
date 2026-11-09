@@ -1,4 +1,4 @@
-import { pgTable, text, real, integer, jsonb, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, real, integer, jsonb, timestamp, primaryKey, index } from "drizzle-orm/pg-core";
 import type { ApExam } from "@/lib/planner/ap";
 
 // A prerequisite tree as the Anteater API returns it, e.g.
@@ -79,3 +79,14 @@ export const savedPlans = pgTable("saved_plans", {
   search: text("search").notNull(), // "?entry=2025&taken=..."
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Messages from the feedback form. "sender" is a salted hash of the sender's IP address, kept
+// only to limit how many messages one person can send in an hour; the address itself isn't stored.
+export const feedback = pgTable("feedback", {
+  id: serial("id").primaryKey(),
+  message: text("message").notNull(),
+  email: text("email"), // optional, if they'd like a reply
+  page: text("page"), // where they were, e.g. "/plan/BS-19H"
+  sender: text("sender").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [index("feedback_sender_created").on(t.sender, t.createdAt)]);

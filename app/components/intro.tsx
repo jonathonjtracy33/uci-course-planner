@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ContinuePlan } from "./continue-plan";
+import { SITE_NAME } from "@/lib/site";
 
 const TAGLINE = ["Your", "college", "path,", "designed", "just", "for", "you."];
 
@@ -7,7 +8,7 @@ const TAGLINE = ["Your", "college", "path,", "designed", "just", "for", "you."];
 // All CSS animation (see globals.css), so it starts immediately and needs no JavaScript.
 export function Intro({ majorNames }: { majorNames: Record<string, string> }) {
   return (
-    <section className="relative grid min-h-[68vh] place-items-center px-4 text-center" aria-label="Welcome to DegreePath">
+    <section className="relative grid min-h-[68vh] place-items-center px-4 text-center" aria-label={`Welcome to ${SITE_NAME}`}>
       <svg className="intro-welcome pointer-events-none absolute inset-x-0 top-1/2 mx-auto h-40 w-full max-w-2xl -translate-y-1/2 sm:h-56" viewBox="0 0 700 220" aria-hidden>
         <defs>
           {/* royal blue, navy, grey, black, turquoise: muted and evenly blended for a matte, ink-like look */}

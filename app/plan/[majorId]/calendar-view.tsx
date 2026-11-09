@@ -7,10 +7,11 @@ import { catalogueUrl, rateMyProfessorsUrl } from "@/lib/links";
 import type { Season } from "@/lib/planner";
 import type { StudentState } from "@/lib/prereq-status";
 import type { Standing } from "@/lib/restrictions";
-import { fetchTermDates, formatDate } from "@/lib/term-dates";
+import { fetchTermDates, formatDate, isBeforeLiveTerm } from "@/lib/term-dates";
 import { fetchGpa, fetchSections, type GpaInfo } from "@/lib/websoc";
 import { CalendarSearch } from "./calendar-search";
 import type { CourseIndex } from "./use-course-index";
+import { SITE_NAME } from "@/lib/site";
 
 const RESTRICTION_CODES = "https://www.reg.uci.edu/enrollment/restrict_codes.html";
 
@@ -87,11 +88,17 @@ export function CalendarView({ quarterLabel, season, liveTerm, courses, chosen, 
         <h2 className="px-6 pt-6 text-base font-semibold">Weekly calendar for {quarterLabel}</h2>
         <div className="mt-3">{searchBar([])}</div>
         <div className="p-6 pt-4">
-        <p className="mt-2 text-muted">
-          UCI hasn&apos;t posted the {quarterLabel} Schedule of Classes yet.{" "}
-          {postDate ? <>UCI&apos;s calendar says it comes out <span className="font-medium text-foreground">{formatDate(postDate)}</span>, and</> : <>It usually comes out about 6 weeks before the quarter, and</>}{" "}
-          DegreePath picks it up the next night. Then you&apos;ll see real class times here and can choose your sections.
-        </p>
+        {isBeforeLiveTerm(quarterLabel, liveTerm) ? (
+          <p className="mt-2 text-muted">
+            {quarterLabel} has already started, so its class times aren&apos;t tracked anymore. UCI&apos;s newest schedule is {liveTerm}: to build that quarter&apos;s calendar, use <span className="font-medium text-foreground">Edit my answers</span> to pick {liveTerm}, and add the classes you&apos;re taking now as completed.
+          </p>
+        ) : (
+          <p className="mt-2 text-muted">
+            UCI hasn&apos;t posted the {quarterLabel} Schedule of Classes yet.{" "}
+            {postDate ? <>UCI&apos;s calendar says it comes out <span className="font-medium text-foreground">{formatDate(postDate)}</span>, and</> : <>It usually comes out about 6 weeks before the quarter, and</>}{" "}
+            {SITE_NAME} picks it up the next night. Then you&apos;ll see real class times here and can choose your sections.
+          </p>
+        )}
         {liveTerm && (
           <button type="button" onClick={() => setPreview(true)} className="mt-4 rounded-lg bg-brand px-4 py-2 font-medium text-white hover:brightness-110">
             Preview with {liveTerm} times

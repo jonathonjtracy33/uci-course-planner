@@ -311,6 +311,8 @@ export function PlanView({ major, courses: courseList, details, apExams, majors,
             </Link>
             {" · "}
             <MyPlanLink />
+            {" · "}
+            <Link href={`/feedback?from=/plan/${major.id}`} className="font-medium text-brand hover:underline">💬 Feedback</Link>
           </p>
           <label className="mt-2 flex items-center gap-2 text-xs text-muted">
             {undeclared ? "Try a major:" : "Change major:"}

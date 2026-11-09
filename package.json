@@ -11,10 +11,12 @@
     "ingest": "tsx --env-file-if-exists=.env.local scripts/ingest.ts",
     "plan": "tsx --env-file-if-exists=.env.local scripts/plan.ts",
     "test": "vitest run",
-    "ingest:schedule": "tsx --env-file-if-exists=.env.local scripts/ingest-schedule.ts"
+    "ingest:schedule": "tsx --env-file-if-exists=.env.local scripts/ingest-schedule.ts",
+    "feedback": "tsx --env-file-if-exists=.env.local scripts/feedback.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
+    "@vercel/analytics": "^2.0.1",
     "drizzle-orm": "^0.45.3",
     "next": "16.4.5",
     "react": "19.3.0",

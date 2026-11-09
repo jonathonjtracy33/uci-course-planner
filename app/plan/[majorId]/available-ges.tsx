@@ -8,6 +8,7 @@ import type { StudentState } from "@/lib/prereq-status";
 import type { Standing } from "@/lib/restrictions";
 import { GeRow } from "./ge-picker";
 import type { GeCourses } from "./use-course-index";
+import { isBeforeLiveTerm } from "@/lib/term-dates";
 
 const PAGE = 12;
 const numeral = (code: string) => (code === "GE-5" ? "V" : GE_CATEGORIES.find((c) => c.code === code)?.numeral ?? code);
@@ -82,7 +83,9 @@ export function AvailableGes({ quarter, geCourses, progress, student, standing, 
       <p className={`mx-4 mt-3 rounded-lg px-3 py-2 text-xs ${scheduleTerm ? "bg-emerald-500/10 text-emerald-800" : "bg-subtle text-muted"}`}>
         {scheduleTerm
           ? <>Live from UCI&apos;s {scheduleTerm} Schedule of Classes: only classes with open seats. Updated nightly.</>
-          : <>UCI hasn&apos;t posted the {quarter.label} Schedule of Classes yet (it usually comes out about 6 weeks before the quarter), so these are classes UCI usually offers in {quarter.season}. Open seats appear here automatically once it&apos;s posted.</>}
+          : isBeforeLiveTerm(quarter.label, liveTerm)
+            ? <>{quarter.label} has already started, so these are classes UCI usually offers in {quarter.season}, without live seats. UCI&apos;s newest schedule is {liveTerm}.</>
+            : <>UCI hasn&apos;t posted the {quarter.label} Schedule of Classes yet (it usually comes out about 6 weeks before the quarter), so these are classes UCI usually offers in {quarter.season}. Open seats appear here automatically once it&apos;s posted.</>}
       </p>
 
       {subject && coveredInSubject.length > 0 && (

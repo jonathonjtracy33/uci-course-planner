@@ -1,0 +1,16 @@
+# Weekly pull requests for outdated or vulnerable packages (this would have flagged the Next.js
+# security fix automatically). Minor and patch updates are grouped into one PR to keep it quiet.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* DegreePath: a white page with UCI blue. One light theme on purpose. */
+/* A white page with UCI blue. One light theme on purpose. */
 :root {
   --background: #ffffff;
   --subtle: #f3f5f8; /* light fill for inputs, chips and rows inside cards */

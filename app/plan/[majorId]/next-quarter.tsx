@@ -3,6 +3,7 @@
 import type { LiveSummary } from "@/lib/ge-recommend";
 import { catalogueUrl } from "@/lib/links";
 import { LiveBadge } from "./live-badge";
+import { isBeforeLiveTerm } from "@/lib/term-dates";
 
 // UCI's official enrollment pages (all on reg.uci.edu or orientation.uci.edu).
 const LINKS = {
@@ -43,7 +44,9 @@ export function NextQuarter({ label, courses, maxUnits, liveTerm, isFirstYear, o
       <p className="mt-1 text-xs text-muted">
         {posted
           ? <>Live seat counts from UCI&apos;s {label} Schedule of Classes, updated daily.</>
-          : <>UCI hasn&apos;t posted the {label} Schedule of Classes yet (usually about 6 weeks before the quarter). Check back then for times and open seats.</>}
+          : isBeforeLiveTerm(label, liveTerm)
+            ? <>{label} has already started, so its open seats aren&apos;t tracked anymore. UCI&apos;s newest schedule is {liveTerm}: to plan that quarter, use <span className="font-medium">Edit my answers</span> to pick {liveTerm}, and add the classes you&apos;re taking now as completed.</>
+            : <>UCI hasn&apos;t posted the {label} Schedule of Classes yet (usually about 6 weeks before the quarter). Check back then for times and open seats.</>}
       </p>
 
       {courses.length > 0 ? (

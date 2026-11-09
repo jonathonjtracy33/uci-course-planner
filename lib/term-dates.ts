@@ -31,3 +31,14 @@ export function quarterIsOver(dates: TermDates, today: Date): boolean {
   const [y, m, d] = dates.finalsEnd.split("-").map(Number);
   return today >= new Date(y, m - 1, d + 1);
 }
+
+// Calendar order of "Winter 2027"-style labels (Winter, Spring, Summer, Fall within a year).
+const ORDER: Record<string, number> = { Winter: 0, Spring: 1, Summer: 2, Fall: 3 };
+const rank = (label: string) => {
+  const [season, year] = label.split(" ");
+  return Number(year) * 4 + (ORDER[season] ?? 0);
+};
+
+// True when `label` comes before the newest quarter on UCI's Schedule of Classes, i.e. it's already
+// underway or over, so there's no point waiting for its schedule to be posted.
+export const isBeforeLiveTerm = (label: string, liveTerm: string | null) => !!liveTerm && rank(label) < rank(liveTerm);

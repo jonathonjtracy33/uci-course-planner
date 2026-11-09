@@ -8,6 +8,7 @@ import { Stepper } from "@/app/components/stepper";
 import type { MajorSummary } from "@/lib/data";
 import { fromStanding, SETUP_STEPS } from "@/lib/plan-settings";
 import { planHref, withoutKeys } from "@/lib/questionnaire";
+import { SITE_NAME } from "@/lib/site";
 
 const SEASONS = ["Fall", "Winter", "Spring"] as const;
 type Season = (typeof SEASONS)[number];
@@ -129,7 +130,7 @@ export function StartFlow({ majors }: { majors: MajorSummary[] }) {
       {step === 1 && (
         <section aria-labelledby="college-q" className="mt-8">
           <h1 id="college-q" className="text-2xl font-semibold tracking-tight sm:text-3xl">Which college are you going to, or attending now?</h1>
-          <p className="mt-2 text-muted">DegreePath uses each school&apos;s own catalog, requirements and class schedule.</p>
+          <p className="mt-2 text-muted">{SITE_NAME} uses each school&apos;s own catalog, requirements and class schedule.</p>
           <div className="mt-6 grid gap-2" role="radiogroup" aria-label="College">
             <button type="button" role="radio" aria-checked={college === "uci"} onClick={() => set({ college: "uci" })} className={`flex items-center justify-between ${card(college === "uci")}`}>
               <span>

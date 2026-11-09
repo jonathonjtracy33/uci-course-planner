@@ -29,3 +29,14 @@ describe("share links", () => {
     expect(parseSettings("?ge=WRITING50@0", 2026).added).toEqual([{ id: "WRITING50", quarter: 0 }]);
   });
 });
+
+import { isBeforeLiveTerm } from "./term-dates";
+
+describe("quarters already underway", () => {
+  it("compares quarters across a year boundary", () => {
+    expect(isBeforeLiveTerm("Fall 2026", "Winter 2027")).toBe(true);
+    expect(isBeforeLiveTerm("Winter 2027", "Winter 2027")).toBe(false);
+    expect(isBeforeLiveTerm("Spring 2027", "Winter 2027")).toBe(false);
+    expect(isBeforeLiveTerm("Fall 2026", null)).toBe(false);
+  });
+});
