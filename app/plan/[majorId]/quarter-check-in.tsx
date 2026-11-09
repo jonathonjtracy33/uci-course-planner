@@ -16,6 +16,7 @@ export function QuarterCheckIn({ label, courses, onSubmit }: {
   onSubmit: (passed: string[], notPassed: string[]) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const advanced = useRef<string | null>(null);
   const [over, setOver] = useState<{ label: string; finalsEnd: string } | null>(null);
   const [failed, setFailed] = useState<Set<string>>(new Set());
 
@@ -37,8 +38,14 @@ export function QuarterCheckIn({ label, courses, onSubmit }: {
   }, [label]);
 
   useEffect(() => {
-    if (over?.label === label && courses.length) dialog.current?.showModal();
-  }, [over, label, courses.length]);
+    if (over?.label !== label) return;
+    if (courses.length) dialog.current?.showModal();
+    // Nothing was planned that quarter, so there's nothing to ask: just move the plan on (once).
+    else if (advanced.current !== label) {
+      advanced.current = label;
+      onSubmit([], []);
+    }
+  }, [over, label, courses.length, onSubmit]);
 
   if (over?.label !== label || !courses.length) return null;
 
